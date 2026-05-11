@@ -168,8 +168,9 @@
           <div class="provider-pane is-active mt-4" id="paneGoogle">
             <span class="field-label">模型</span>
             <select class="text-field" id="googleModel">
-              <option value="gemini-2.5-flash-image">Nano Banana（gemini-2.5-flash-image）</option>
-              <option value="gemini-3-pro-image-preview" selected>Nano Banana Pro（gemini-3-pro-image-preview）</option>
+              <option value="gemini-3-pro-image-preview" selected>Nano Banana Pro（gemini-3-pro-image-preview，較貴 / 可 4K）</option>
+              <option value="gemini-3.1-flash-image-preview">Nano Banana 2（gemini-3.1-flash-image-preview，Google 推薦）</option>
+              <option value="gemini-2.5-flash-image">Nano Banana（gemini-2.5-flash-image，快 / 省）</option>
               <option value="__custom__">自訂…</option>
             </select>
             <input type="text" class="text-field mt-4" id="googleModelCustom" autocomplete="off" placeholder="自訂模型 ID" hidden>
@@ -413,7 +414,7 @@
     // ---------- 模型 / key ----------
     function currentModel() {
       if (state.provider === "openai") { var v = els.openaiModel.value; return v === "__custom__" ? (els.openaiModelCustom.value.trim() || "gpt-image-2") : v; }
-      var g = els.googleModel.value; return g === "__custom__" ? (els.googleModelCustom.value.trim() || "gemini-2.5-flash-image") : g;
+      var g = els.googleModel.value; return g === "__custom__" ? (els.googleModelCustom.value.trim() || "gemini-3-pro-image-preview") : g;
     }
     function currentKey() { return (state.provider === "openai" ? els.openaiKey.value : els.googleKey.value).trim(); }
 
