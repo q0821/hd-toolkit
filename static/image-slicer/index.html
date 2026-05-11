@@ -14,13 +14,27 @@
     .slicer-counter { margin-top: var(--space-3); font-family: var(--font-mono); font-size: 13px; color: var(--text-muted); }
     .slicer-counter b { color: var(--accent); font-weight: 500; }
     .slicer-stage { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; }
-    .slicer-figure { position: relative; display: inline-block; line-height: 0; max-width: 100%; }
-    .slicer-figure img { display: block; max-width: 100%; max-height: calc(100vh - 200px); border-radius: 6px; box-shadow: var(--shadow-sm); }
+    .slicer-figure { position: relative; display: inline-block; line-height: 0; max-width: 100%; border-radius: 6px; overflow: hidden; box-shadow: var(--shadow-sm); }
+    .slicer-figure img, .slicer-figure canvas { display: block; max-width: 100%; max-height: calc(100vh - 200px); }
+    .slicer-figure img[hidden], .slicer-figure canvas[hidden] { display: none; }   /* 蓋過 app.css 全域的 img{display:block} */
+    /* 去綠幕時露出棋盤格底，看得出哪裡變透明 */
+    .slicer-figure--checker {
+      background-color: #fff;
+      background-image:
+        linear-gradient(45deg, #d8d8d8 25%, transparent 25%),
+        linear-gradient(-45deg, #d8d8d8 25%, transparent 25%),
+        linear-gradient(45deg, transparent 75%, #d8d8d8 75%),
+        linear-gradient(-45deg, transparent 75%, #d8d8d8 75%);
+      background-size: 18px 18px;
+      background-position: 0 0, 0 9px, 9px -9px, -9px 0;
+    }
     .slicer-grid { position: absolute; inset: 0; pointer-events: none; }
     .slicer-grid .gl-v { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--accent); opacity: 0.72; }
     .slicer-grid .gl-h { position: absolute; left: 0; right: 0; height: 1px; background: var(--accent); opacity: 0.72; }
     .slicer-caption { margin-top: var(--space-3); text-align: center; font-family: var(--font-mono); font-size: 12px; color: var(--text-dim); }
     .stepper-pair { display: flex; gap: var(--space-6); flex-wrap: wrap; }
+    .hint-line { margin-top: var(--space-2); font-size: 12px; color: var(--text-dim); }
+    .hint-line a { color: var(--text-muted); }
   </style>
 </head>
 <body>
@@ -83,7 +97,23 @@
         </div>
 
         <div class="section">
-          <div class="section__label"><span class="section__num">03</span> 輸出格式</div>
+          <div class="section__label"><span class="section__num">03</span> 背景</div>
+          <div class="segmented" id="bgSeg" role="group" aria-label="背景處理">
+            <button type="button" class="segmented__btn" data-bg="keep" aria-pressed="true">保留原背景</button>
+            <button type="button" class="segmented__btn" data-bg="chroma" aria-pressed="false">去除綠幕</button>
+          </div>
+          <div class="mt-4 is-disabled-row" id="chromaRow">
+            <span class="field-label">綠幕容差（範圍越大去得越多）</span>
+            <div class="range-field">
+              <input type="range" id="chromaSlider" min="0" max="100" value="40" disabled>
+              <span class="range-field__val" id="chromaVal">40</span>
+            </div>
+            <p class="hint-line">自動偵測四角的背景色。要手動取色或更細的微調，請改用 <a href="/bg-remover">圖片去背</a> 工具。</p>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section__label"><span class="section__num">04</span> 輸出格式</div>
           <div class="segmented" id="formatSeg" role="group" aria-label="輸出格式">
             <button type="button" class="segmented__btn" data-format="png" aria-pressed="true">PNG</button>
             <button type="button" class="segmented__btn" data-format="jpg" aria-pressed="false">JPG</button>
@@ -99,7 +129,7 @@
         </div>
 
         <div class="section">
-          <div class="section__label"><span class="section__num">04</span> 檔名前綴（可留空）</div>
+          <div class="section__label"><span class="section__num">05</span> 檔名前綴（可留空）</div>
           <input type="text" class="text-field" id="prefixInput" value="split-" spellcheck="false" autocomplete="off" placeholder="留空 → 檔名為 1-1.png、1-2.png …">
         </div>
 
@@ -131,8 +161,9 @@
         </div>
         <div class="slicer-stage" id="previewStage" hidden>
           <div>
-            <div class="slicer-figure">
+            <div class="slicer-figure" id="previewFigure">
               <img id="previewImg" alt="預覽">
+              <canvas id="previewCanvas" hidden></canvas>
               <div class="slicer-grid" id="previewGrid"></div>
             </div>
             <div class="slicer-caption" id="previewCaption"></div>
@@ -143,6 +174,7 @@
     </div>
   </main>
 
+  <script src="/static/shared/chroma-key.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
   <script>
   (function () {
@@ -158,15 +190,17 @@
       dropzone: $('dropzone'), fileInput: $('fileInput'), fileName: $('fileName'),
       colsVal: $('colsVal'), rowsVal: $('rowsVal'),
       cntCols: $('cntCols'), cntRows: $('cntRows'), cntTotal: $('cntTotal'),
+      bgSeg: $('bgSeg'), chromaRow: $('chromaRow'), chromaSlider: $('chromaSlider'), chromaVal: $('chromaVal'),
       formatSeg: $('formatSeg'), qualityRow: $('qualityRow'), qualitySlider: $('qualitySlider'), qualityVal: $('qualityVal'),
       prefixInput: $('prefixInput'), sliceBtn: $('sliceBtn'),
       progress: $('progress'), progressBar: $('progressBar'), progressStatus: $('progressStatus'),
       errorMsg: $('errorMsg'), errorText: $('errorText'), successMsg: $('successMsg'), successText: $('successText'),
-      previewEmpty: $('previewEmpty'), previewStage: $('previewStage'), previewImg: $('previewImg'),
-      previewGrid: $('previewGrid'), previewCaption: $('previewCaption')
+      previewEmpty: $('previewEmpty'), previewStage: $('previewStage'), previewFigure: $('previewFigure'),
+      previewImg: $('previewImg'), previewCanvas: $('previewCanvas'), previewGrid: $('previewGrid'), previewCaption: $('previewCaption')
     };
 
-    var state = { cols: 3, rows: 3, format: 'png', img: null, imgURL: null, busy: false };
+    var state = { cols: 3, rows: 3, format: 'png', img: null, imgURL: null, busy: false,
+                  chroma: false, chromaTolerance: 40, chromaCanvas: null, chromaDirty: false };
 
     function clamp(n) { return Math.max(MIN, Math.min(MAX, n)); }
     function showError(msg) { els.errorText.textContent = msg; els.errorMsg.classList.add('is-shown'); els.successMsg.classList.remove('is-shown'); }
@@ -198,6 +232,53 @@
       els.qualityRow.classList.toggle('is-disabled-row', !lossy);
     }
 
+    // 去綠幕需要 alpha → 鎖成 PNG / WEBP，停用 JPG
+    function syncFormatAvailability() {
+      var jpgBtn = els.formatSeg.querySelector('[data-format="jpg"]');
+      var lockPng = state.chroma;
+      jpgBtn.disabled = lockPng || state.busy;
+      jpgBtn.style.opacity = lockPng ? '0.4' : '';
+      jpgBtn.title = lockPng ? '去除綠幕時需要透明背景，不支援 JPG' : '';
+      if (lockPng && state.format === 'jpg') {
+        state.format = 'png';
+        els.formatSeg.querySelectorAll('.segmented__btn').forEach(function (b) { b.setAttribute('aria-pressed', b.getAttribute('data-format') === 'png' ? 'true' : 'false'); });
+        syncQualityRow();
+      }
+    }
+
+    function syncChromaRow() {
+      els.chromaRow.classList.toggle('is-disabled-row', !state.chroma);
+      els.chromaSlider.disabled = !state.chroma || state.busy;
+    }
+
+    function markChromaDirty() { state.chromaDirty = true; }
+
+    // 對整張原圖去綠幕，結果存進 state.chromaCanvas（之後切片以它為來源）
+    function runChroma() {
+      if (!state.img) return;
+      var out = ChromaKey.process(state.img, { tolerance: state.chromaTolerance / 100 });
+      state.chromaCanvas = out.canvas;
+      state.chromaDirty = false;
+      var c = els.previewCanvas;
+      c.width = out.canvas.width; c.height = out.canvas.height;
+      c.getContext('2d').drawImage(out.canvas, 0, 0);
+    }
+    function ensureChroma() { if (state.chroma && (state.chromaDirty || !state.chromaCanvas)) runChroma(); }
+
+    function refreshPreviewImage() {
+      if (!state.img) return;
+      if (state.chroma) {
+        ensureChroma();
+        els.previewImg.hidden = true; els.previewCanvas.hidden = false;
+        els.previewFigure.classList.add('slicer-figure--checker');
+      } else {
+        els.previewCanvas.hidden = true; els.previewImg.hidden = false;
+        els.previewFigure.classList.remove('slicer-figure--checker');
+      }
+    }
+
+    function sliceSource() { return (state.chroma && state.chromaCanvas) ? state.chromaCanvas : state.img; }
+
     function syncSliceBtn() {
       els.sliceBtn.disabled = !state.img || state.busy;
       if (!state.img) els.sliceBtn.textContent = '選擇圖片後開始切割';
@@ -223,11 +304,12 @@
     function updateCaption() {
       if (!state.img) return;
       var W = state.img.naturalWidth, H = state.img.naturalHeight;
-      els.previewCaption.textContent = '原圖 ' + W + ' × ' + H + ' ｜ 每塊約 ' + Math.floor(W / state.cols) + ' × ' + Math.floor(H / state.rows) + ' px';
+      els.previewCaption.textContent = (state.chroma ? '已去綠幕 ｜ ' : '') + '原圖 ' + W + ' × ' + H +
+        ' ｜ 每塊約 ' + Math.floor(W / state.cols) + ' × ' + Math.floor(H / state.rows) + ' px';
     }
 
     function refreshPreview() {
-      if (state.img) { renderGridOverlay(); updateCaption(); }
+      if (state.img) { refreshPreviewImage(); renderGridOverlay(); updateCaption(); }
       syncCounter(); syncSliceBtn();
     }
 
@@ -241,6 +323,7 @@
       img.onload = function () {
         if (!img.naturalWidth || !img.naturalHeight) { URL.revokeObjectURL(url); showError('無法讀取這張圖片的尺寸。'); return; }
         state.img = img; state.imgURL = url;
+        state.chromaCanvas = null; state.chromaDirty = true;
         els.fileName.textContent = file.name + '  ·  ' + img.naturalWidth + '×' + img.naturalHeight;
         els.fileName.classList.add('is-shown');
         els.previewImg.src = url;
@@ -263,6 +346,8 @@
       if (total > MAX_TILES) { showError('一次最多 ' + MAX_TILES + ' 塊，目前 ' + total + ' 塊太多了。'); return; }
       if (typeof JSZip === 'undefined') { showError('打包元件（JSZip）載入失敗，請檢查網路連線後重新整理頁面。'); return; }
 
+      ensureChroma();
+      var src = sliceSource();
       var fmt = FORMAT[state.format];
       var quality = fmt.lossy ? (parseInt(els.qualitySlider.value, 10) / 100) : undefined;
       var prefix = sanitizePrefix(els.prefixInput.value); // 可為空字串
@@ -270,7 +355,7 @@
       var xs = tileEdges(W, cols), ys = tileEdges(H, rows);
 
       state.busy = true; hideMessages();
-      syncSliceBtn(); syncCounter(); syncQualityRow();
+      syncSliceBtn(); syncCounter(); syncQualityRow(); syncFormatAvailability(); syncChromaRow();
       els.progress.classList.add('is-shown');
       els.progressBar.style.width = '0%';
       els.progressStatus.textContent = '切割中… 0 / ' + total;
@@ -282,7 +367,7 @@
             var sx = xs[c], sy = ys[r], sw = xs[c + 1] - sx, sh = ys[r + 1] - sy;
             var canvas = document.createElement('canvas');
             canvas.width = sw; canvas.height = sh;
-            canvas.getContext('2d').drawImage(state.img, sx, sy, sw, sh, 0, 0, sw, sh);
+            canvas.getContext('2d').drawImage(src, sx, sy, sw, sh, 0, 0, sw, sh);
             var blob = await canvasToBlob(canvas, fmt.mime, quality);
             // 命名：[前綴]列-欄（預設前綴 split- → split-1-1.png；前綴留空 → 1-1.png；依列再依欄）
             var stem = (r + 1) + '-' + (c + 1);
@@ -308,13 +393,13 @@
         URL.revokeObjectURL(dlURL);
 
         setTimeout(function () { els.progress.classList.remove('is-shown'); }, 500);
-        showSuccess('已切成 ' + total + ' 塊（' + fmt.ext.toUpperCase() + '），ZIP 已開始下載。');
+        showSuccess('已切成 ' + total + ' 塊（' + fmt.ext.toUpperCase() + (state.chroma ? '、已去綠幕' : '') + '），ZIP 已開始下載。');
       } catch (e) {
         els.progress.classList.remove('is-shown');
         showError(e && e.message ? e.message : '切割失敗。');
       } finally {
         state.busy = false;
-        syncSliceBtn(); syncCounter(); syncQualityRow();
+        syncSliceBtn(); syncCounter(); syncQualityRow(); syncFormatAvailability(); syncChromaRow();
       }
     }
 
@@ -341,18 +426,41 @@
 
     els.formatSeg.querySelectorAll('.segmented__btn').forEach(function (btn) {
       btn.addEventListener('click', function () {
-        if (state.busy) return;
+        if (state.busy || btn.disabled) return;
         state.format = btn.getAttribute('data-format');
         els.formatSeg.querySelectorAll('.segmented__btn').forEach(function (b) { b.setAttribute('aria-pressed', b === btn ? 'true' : 'false'); });
         syncQualityRow();
       });
     });
 
+    els.bgSeg.querySelectorAll('.segmented__btn').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        if (state.busy) return;
+        state.chroma = btn.getAttribute('data-bg') === 'chroma';
+        els.bgSeg.querySelectorAll('.segmented__btn').forEach(function (b) { b.setAttribute('aria-pressed', b === btn ? 'true' : 'false'); });
+        markChromaDirty();
+        syncChromaRow(); syncFormatAvailability();
+        refreshPreview();
+      });
+    });
+
+    var chromaDebounce = null;
+    els.chromaSlider.addEventListener('input', function () {
+      state.chromaTolerance = parseInt(els.chromaSlider.value, 10);
+      els.chromaVal.textContent = state.chromaTolerance;
+      markChromaDirty();
+      if (chromaDebounce) clearTimeout(chromaDebounce);
+      chromaDebounce = setTimeout(function () {
+        chromaDebounce = null;
+        if (state.img && state.chroma) { runChroma(); refreshPreviewImage(); updateCaption(); }
+      }, 140);
+    });
+
     els.qualitySlider.addEventListener('input', function () { els.qualityVal.textContent = els.qualitySlider.value + '%'; });
     els.sliceBtn.addEventListener('click', doSlice);
 
     // ---- init ----
-    syncCounter(); syncQualityRow(); syncSliceBtn();
+    syncCounter(); syncQualityRow(); syncChromaRow(); syncFormatAvailability(); syncSliceBtn();
   })();
   </script>
 </body>

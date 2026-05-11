@@ -179,3 +179,81 @@ GET  /api/health
 - **不使用 Emoji**：UI 一律 inline SVG icon（含參考稿裡的 🖼️ / ✂️）
 - **網站顯示名稱 = 「HD 的工具箱」**（header 字標、`<title>`、footer、首頁 hero 都用這個）；`hd-toolkit` 只當 repo / 資料夾代號
 - **JSZip 走 CDN**（cdnjs `jszip@3.10.1`，`crossorigin` 無 SRI）；圖片切片若 JSZip 載入失敗會用 `.message--error` 提示。日後若想離線可用，可改 vendor 到 `static/shared/vendor/jszip.min.js`
+
+---
+
+# 追加：去背功能（2026-05-11）
+
+新增「圖片去背」工具（綠幕 + AI 兩模式），並讓圖片切片工具順便能在切之前去綠幕。決策見最下方紀錄。
+
+## 階段 5：共用綠幕去背模組
+**目標**：`static/shared/chroma-key.js` — 純前端 Canvas 單色背景去背，給 bg-remover 與 image-slicer 共用
+- 匯出 `window.ChromaKey.process(imgOrCanvas, {keyColor?, tolerance, smoothness, spill}) → {canvas, keyColor, lowSaturation}`
+- `keyColor` 不給時自動從四角取樣（取最飽和的角落）
+- 演算法：HSV 色相距離分內外閾值（內＝全透明、內外間＝線性羽化），近灰 / 近黑不視為背景；去溢色＝把 key 的主通道（綠幕→G）往另兩通道平均壓，依色相接近度與強度加權
+- 回傳的 canvas 背景像素 alpha 已歸零（匯出 PNG/WEBP 即透明）
+
+**成功標準**：以一張綠幕圖呼叫 `process()`，回傳 canvas 匯出 PNG 後背景透明、主體邊緣無明顯綠邊；非單色背景圖 `lowSaturation` 為 true
+
+**狀態**：完成
+
+## 階段 6：新工具「圖片去背」`/bg-remover`
+**目標**：`static/bg-remover/index.html` — 上傳圖片 → 選去背方式 → 下載透明 PNG
+- `.segmented` 切換「綠幕去背 / AI 智慧去背」
+- 綠幕模式：顯示偵測到的背景色（可點預覽圖手動取色、可重設為自動）＋容差 / 邊緣羽化 / 去溢色三條 `.range`；改任一參數即時重算右側預覽（debounce）
+- AI 模式：`@imgly/background-removal`（jsDelivr ESM，瀏覽器跑 ONNX，預設 `publicPath` 自動抓 staticimgly CDN 的 wasm/模型），`progress` 回呼接到 `.progress` 條；提示「首次下載模型、之後快取、圖片不上傳」
+- 預覽區：棋盤格底（顯示透明）＋ `preview-empty` 空狀態
+- 「處理並下載 PNG」：綠幕＝拿目前已處理的 canvas → toBlob → 下載；AI＝呼叫 removeBackground → 顯示結果 + 下載
+- `main.py` 加 `GET /bg-remover`；`static/index.html` 加 `.tool-card`（並順手移除 image-slicer 卡上過時的「即將推出」tag）；`README.md` 補工具表 + 目錄結構
+
+**成功標準**：`/bg-remover` 200；綠幕模式上傳綠幕圖 → 即時看到去背預覽、調參數有反應、點圖可改取色、按鈕下載到透明 PNG；AI 模式上傳任意背景圖 → 進度條跑、處理完預覽顯示去背結果、下載到透明 PNG；亮 / 暗模式都正常
+
+**狀態**：完成
+
+## 階段 7：圖片切片加「去綠幕」選項
+**目標**：`static/image-slicer/index.html` — 在切割設定附近加一組「背景」`.segmented`：保留原背景 / 去除綠幕（含容差 `.range`）
+- 勾「去除綠幕」→ 輸出格式鎖 PNG / WEBP（停用 JPG 按鈕，若當下選 JPG 自動切回 PNG）；先用 `ChromaKey.process()` 對整張原圖去背 → 再從處理後 canvas 切片
+- 右側預覽：去綠幕開啟時改棋盤格底並顯示去背後的圖（格線照舊疊上）
+
+**成功標準**：開「去除綠幕」→ 預覽變透明背景、JPG 鈕停用；切割後 ZIP 內每塊 PNG 背景透明且邊緣無綠邊；關掉回到原行為
+
+**狀態**：完成
+
+## 追加決策紀錄
+| Date | Decision | Rationale |
+|------|----------|-----------|
+| 2026-05-11 | 去背做成「一個工具兩模式」（綠幕 Canvas + AI `@imgly/background-removal`），不拆兩個工具 | 使用者指定；同一個「去背」心智模型，模式切換即可 |
+| 2026-05-11 | AI 模式跑在瀏覽器（jsDelivr ESM + staticimgly CDN 的 wasm/模型），不走後端 rembg | 使用者選；維持「能在瀏覽器做就不上傳」，Docker / 伺服器零負擔；代價＝首次載入要下載模型（會快取） |
+| 2026-05-11 | 去背輸出先只做「透明 PNG」，不做換純色底 / 換背景圖 | 使用者選；涵蓋大多數需求，UI 最單純，之後要再加 |
+| 2026-05-11 | 綠幕去背抽成 `static/shared/chroma-key.js` 共用模組 | bg-remover 與 image-slicer 兩個消費者，值得抽；演算法只有一份 |
+| 2026-05-11 | image-slicer 的去綠幕：先整張去背再切（不是切完逐塊去背） | 結果完全一樣（逐像素處理與切割順序無關），先去再切實作最單純；切完格式自動限 PNG/WEBP |
+
+---
+
+# 追加：縮圖 / 圖片壓縮工具（2026-05-11）
+
+新增「圖片壓縮」工具 `/image-compressor`，純前端，選項參考 [pic-smaller](https://github.com/joye61/pic-smaller)（MIT）。**不 fork 它的 codebase**（React + Vite + Ant Design 跟本專案 vanilla 無框架不合），改用同類的 jSquash WASM codec + vanilla 重寫 UI，並在頁尾 / README 致謝。
+
+## 階段 8：圖片壓縮工具 `/image-compressor`
+**目標**：批次上傳圖片 → 設輸出格式 / 品質 / 縮放 → 壓縮 → 看壓縮率、個別 / 全部（ZIP）下載，全部在瀏覽器完成
+- codec：jSquash（unpkg `?module` ESM，瀏覽器跑 WASM）—— `@jsquash/jpeg`、`@jsquash/png`、`@jsquash/webp`、`@jsquash/avif`、`@jsquash/resize`、`@jsquash/oxipng`（PNG 無損最佳化）
+- 流程 per file：`file.arrayBuffer()` → 依來源 MIME `decode()` → `ImageData` →（可選）`resize()` → 依目標格式 `encode({quality})`（PNG 走 `png.encode` 再 `oxipng.optimise`）→ `Blob`
+- UI（沿用 `app.css` 元件 + 左控制 / 右預覽版面）：
+  - 左：`01` dropzone（`multiple`，接受 jpg/png/webp/avif）｜ `02` 輸出格式 `.segmented`（原格式 / JPEG / PNG / WEBP / AVIF）｜ `03` 品質 `.range` 1–100（PNG 或「原格式且來源為 PNG」時停用，提示走 oxipng 無損）｜ `04` 縮放 `.segmented`（不縮放 / 寬度 / 高度 / 長邊 / 短邊 / 比例，皆等比例）+ `.text-field` 數值 ｜「壓縮全部」按鈕（無檔時 disabled，壓縮中顯示進度）｜ `.progress` ｜ `.message`
+  - 右：檔案清單（每列：縮圖 + 檔名 + 原大小 → 壓縮後大小（−XX%）+ 個別下載鈕；尚未壓縮顯示原大小與「待壓縮」）+ 頂部「全部下載 ZIP」（JSZip，沿用 image-slicer 那顆 CDN）+ `.preview-empty` 空狀態；改任何選項後可重新壓縮
+- 邊界：非支援格式擋掉並用 `.message--error`；單檔過大（如 > 30 MB）提示；壓縮中 disable 按鈕；codec 載入失敗（CDN 擋）提示重試
+- `main.py` 加 `GET /image-compressor`；`static/index.html` 加 `.tool-card`；`README.md` 補工具表 + 目錄結構 + 致謝；頁尾「參考自 pic-smaller」連結
+- v1 不含 GIF / SVG（gifsicle-wasm / svgo 較重，列後續）；壓縮跑主執行緒（逐檔 await + 之間 `setTimeout(0)` yield），不開 Web Worker（先求簡單、與現有工具一致）
+
+**成功標準**：上傳數張 jpg/png → 品質 75、輸出原格式 → 壓縮後明顯變小、清單顯示壓縮率、可個別 / 全部下載；改 WEBP 重壓 → 輸出 `.webp`；勾「依寬 800」→ 輸出寬 800 等比；亮 / 暗模式正常；無 JS error
+
+**測試**：jpg / png / webp 各一張、含一張本來就很小的（壓不太動）、改格式重壓、改縮放重壓、批次 5 張、全部下載 ZIP 開來檢查；桌機 + 手機寬度
+
+**狀態**：完成（無頭瀏覽器實測：6 張真實 JPEG/PNG 批次壓縮，jpg→jpg 約 −53~61%、png→png oxipng −66%；切 WEBP + 縮放 重壓 −84~97%；超小 PNG 轉 WEBP 反而變大、UI 以 warning 色顯示 +%；jSquash CDN + mozjpeg/oxipng/libwebp/resize 都正常）— 待使用者實機驗證 AVIF 輸出與手機版面
+
+## 追加決策紀錄
+| Date | Decision | Rationale |
+|------|----------|-----------|
+| 2026-05-11 | 不 fork pic-smaller，改用 jSquash codec + vanilla 重寫 UI、致謝 pic-smaller | pic-smaller 是 React/Vite/Ant Design + build pipeline，跟本專案「純手刻 HTML/CSS/JS、無框架、無 build」原則衝突；真正可重用的是底層 WASM codec |
+| 2026-05-11 | codec 選 jSquash（mozjpeg/oxipng/libwebp/libavif 的模組化 WASM port），非 pic-smaller 原本那組 | jSquash 模組化、unpkg `?module` CDN 直接用、無 build、維護活躍；pic-smaller 那組（wasm-image-compressor / wasm_avif / gifsicle-wasm / svgo）來源較雜 |
+| 2026-05-11 | v1 不做 GIF / SVG，壓縮跑主執行緒不開 Worker | 先求能用且簡單；GIF/SVG 的 lib 較重、Worker 增加複雜度，列為後續優化 |

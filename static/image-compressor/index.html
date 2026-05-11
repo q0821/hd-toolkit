@@ -1,0 +1,487 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>圖片壓縮 · HD 的工具箱</title>
+  <meta name="description" content="批次壓縮圖片：JPEG / PNG / WEBP / AVIF 互轉、可調品質、可縮放，全部在瀏覽器裡用 WASM codec 完成，檔案不上傳。">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="/static/shared/app.css">
+  <script src="/static/shared/theme.js"></script>
+  <style>
+    /* 圖片壓縮工具專屬樣式（共用元件在 app.css） */
+    .tool-layout__preview { align-items: stretch; justify-content: flex-start; overflow-y: auto; }
+    .cmp-wrap { width: 100%; max-width: 740px; margin: 0 auto; }
+    .cmp-empty-center { margin: auto; }
+
+    .cmp-summary {
+      display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap;
+      padding-bottom: var(--space-4); margin-bottom: var(--space-4);
+      border-bottom: 1px solid var(--border);
+      font-size: 14px; color: var(--text-muted);
+    }
+    .cmp-summary b { font-family: var(--font-mono); color: var(--text); font-weight: 500; }
+    .cmp-summary .saved { color: var(--success); font-family: var(--font-mono); font-weight: 500; }
+    .cmp-summary__spacer { flex: 1; }
+
+    .cmp-list { display: flex; flex-direction: column; gap: var(--space-3); }
+    .cmp-row {
+      display: flex; align-items: center; gap: var(--space-3);
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius-md); padding: var(--space-3);
+    }
+    .cmp-thumb {
+      width: 44px; height: 44px; flex-shrink: 0; border-radius: var(--radius-sm);
+      object-fit: cover; background: var(--surface-2); border: 1px solid var(--border);
+    }
+    .cmp-info { flex: 1; min-width: 0; }
+    .cmp-name {
+      font-size: 14px; color: var(--text); font-weight: 500;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .cmp-sizes { font-family: var(--font-mono); font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+    .cmp-sizes .new { color: var(--text); }
+    .cmp-sizes .ratio-down { color: var(--success); }
+    .cmp-sizes .ratio-up { color: var(--warning); }
+    .cmp-sizes .dim { color: var(--text-dim); }
+    .cmp-sizes .err { color: var(--error); }
+    .cmp-row .btn { padding: 6px 12px; font-size: 13px; flex-shrink: 0; }
+
+    .cmp-resize-row { display: flex; align-items: flex-end; gap: var(--space-3); }
+    .cmp-resize-row .text-field { width: 120px; }
+    .cmp-resize-row .unit { font-family: var(--font-mono); font-size: 13px; color: var(--text-muted); padding-bottom: 11px; }
+    .hint-line { margin-top: var(--space-2); font-size: 12px; color: var(--text-dim); }
+    .hint-line a { color: var(--text-muted); }
+    .segmented--wrap { flex-wrap: wrap; }
+  </style>
+</head>
+<body>
+
+  <header class="app-header">
+    <div class="app-header__row">
+      <a href="/" class="brand">HD 的工具箱</a>
+      <span class="crumb-sep">/</span>
+      <span class="crumb-cur">圖片壓縮</span>
+      <span class="app-header__spacer"></span>
+      <a href="/" class="btn btn--ghost" style="padding:6px 10px;font-size:13px">
+        <svg class="icon icon--sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+        回工具箱
+      </a>
+      <button type="button" class="theme-toggle" id="themeToggle" aria-label="切換亮 / 暗模式" title="切換亮 / 暗模式">
+        <svg class="icon icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
+        <svg class="icon icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <main class="app-main app-main--full">
+    <div class="tool-layout">
+
+      <!-- ===== 左：控制 ===== -->
+      <div class="tool-layout__controls">
+
+        <div class="section">
+          <div class="section__label"><span class="section__num">01</span> 上傳圖片</div>
+          <div class="dropzone" id="dropzone">
+            <input type="file" id="fileInput" accept="image/jpeg,image/png,image/webp,image/avif" multiple hidden>
+            <svg class="dropzone__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M8.5 10a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3z"/><path d="M21 15l-5-5L5 21"/></svg>
+            <div class="dropzone__title">拖曳圖片到這裡</div>
+            <div class="dropzone__hint">可一次多張（JPEG / PNG / WEBP / AVIF）</div>
+            <span class="dropzone__file" id="fileCount"></span>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section__label"><span class="section__num">02</span> 輸出格式</div>
+          <div class="segmented segmented--wrap" id="formatSeg" role="group" aria-label="輸出格式">
+            <button type="button" class="segmented__btn" data-format="orig" aria-pressed="true">原格式</button>
+            <button type="button" class="segmented__btn" data-format="jpeg" aria-pressed="false">JPEG</button>
+            <button type="button" class="segmented__btn" data-format="png" aria-pressed="false">PNG</button>
+            <button type="button" class="segmented__btn" data-format="webp" aria-pressed="false">WEBP</button>
+            <button type="button" class="segmented__btn" data-format="avif" aria-pressed="false">AVIF</button>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section__label"><span class="section__num">03</span> 品質</div>
+          <div class="range-field">
+            <input type="range" id="qualitySlider" min="1" max="100" value="75">
+            <span class="range-field__val" id="qualityVal">75</span>
+          </div>
+          <p class="hint-line">套用於 JPEG / WEBP / AVIF。PNG 輸出為無損（會以 oxipng 最佳化，不吃此值）。</p>
+        </div>
+
+        <div class="section">
+          <div class="section__label"><span class="section__num">04</span> 縮放</div>
+          <div class="segmented segmented--wrap" id="resizeSeg" role="group" aria-label="縮放">
+            <button type="button" class="segmented__btn" data-resize="none" aria-pressed="true">不縮放</button>
+            <button type="button" class="segmented__btn" data-resize="width" aria-pressed="false">寬度</button>
+            <button type="button" class="segmented__btn" data-resize="height" aria-pressed="false">高度</button>
+            <button type="button" class="segmented__btn" data-resize="long" aria-pressed="false">長邊</button>
+            <button type="button" class="segmented__btn" data-resize="short" aria-pressed="false">短邊</button>
+            <button type="button" class="segmented__btn" data-resize="percent" aria-pressed="false">比例</button>
+          </div>
+          <div class="cmp-resize-row mt-4" id="resizeRow" hidden>
+            <div>
+              <span class="field-label" id="resizeLabel">寬度</span>
+              <input type="text" class="text-field" id="resizeInput" inputmode="numeric" autocomplete="off" value="1920">
+            </div>
+            <span class="unit" id="resizeUnit">px</span>
+          </div>
+          <p class="hint-line" id="resizeHint" hidden>等比例縮放，另一邊自動換算。</p>
+        </div>
+
+        <button type="button" class="btn btn--primary btn--block" id="goBtn" disabled>選擇圖片後開始壓縮</button>
+
+        <div class="progress" id="progress">
+          <div class="progress__header">
+            <span class="progress__label">壓縮中</span>
+            <span class="progress__status" id="progressStatus"></span>
+          </div>
+          <div class="progress__track"><div class="progress__bar" id="progressBar"></div></div>
+        </div>
+
+        <div class="message message--error" id="errorMsg">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M15 9l-6 6M9 9l6 6"/></svg>
+          <span id="errorText"></span>
+        </div>
+        <div class="message message--success" id="successMsg">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><path d="M22 4L12 14.01l-3-3"/></svg>
+          <span id="successText"></span>
+        </div>
+
+        <p class="hint-line" style="margin-top:var(--space-2)">第一次使用會下載壓縮用的 WASM codec（mozjpeg / oxipng / libwebp / libavif，之後瀏覽器會快取）。所有處理都在你的電腦上完成，圖片不會上傳。</p>
+      </div>
+
+      <!-- ===== 右：清單 ===== -->
+      <div class="tool-layout__preview" id="previewArea">
+        <div class="preview-empty cmp-empty-center" id="previewEmpty">
+          <svg class="preview-empty__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><path d="M3.27 6.96 12 12.01l8.73-5.05M12 22.08V12"/></svg>
+          <p>上傳圖片後清單會顯示於此</p>
+        </div>
+        <div class="cmp-wrap" id="cmpPanel" hidden>
+          <div class="cmp-summary">
+            <span id="cmpSummary">共 0 張</span>
+            <span class="cmp-summary__spacer"></span>
+            <button type="button" class="btn btn--ghost" id="clearBtn" style="padding:6px 10px;font-size:13px">清空清單</button>
+            <button type="button" class="btn btn--secondary" id="zipBtn" style="padding:6px 12px;font-size:13px" disabled>全部下載 ZIP</button>
+          </div>
+          <div class="cmp-list" id="cmpList"></div>
+        </div>
+      </div>
+
+    </div>
+  </main>
+
+  <footer class="app-footer">
+    <p>選項與互動參考自 <a href="https://github.com/joye61/pic-smaller" rel="noopener">pic-smaller</a>（MIT）；壓縮由 <a href="https://github.com/jamsinclair/jsquash" rel="noopener">jSquash</a> WASM codec 提供。</p>
+  </footer>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+  <script type="module">
+    // ---- jSquash codec（unpkg ESM，瀏覽器跑 WASM；用到才載、載過就快取）----
+    const CDN = (name) => `https://unpkg.com/@jsquash/${name}?module`;
+    const _codecCache = {};
+    function getCodec(name) { return (_codecCache[name] ||= import(CDN(name))); }
+
+    const SUPPORTED = { 'image/jpeg': 'jpeg', 'image/png': 'png', 'image/webp': 'webp', 'image/avif': 'avif' };
+    const FMT = {
+      jpeg: { mime: 'image/jpeg', ext: 'jpg',  lossy: true  },
+      png:  { mime: 'image/png',  ext: 'png',  lossy: false },
+      webp: { mime: 'image/webp', ext: 'webp', lossy: true  },
+      avif: { mime: 'image/avif', ext: 'avif', lossy: true  },
+    };
+
+    async function decodeFile(buf, srcCodec) {
+      const mod = await getCodec(srcCodec);
+      return mod.decode(buf);
+    }
+    async function encodeImage(imageData, targetCodec, quality) {
+      if (targetCodec === 'png') {
+        const png = await getCodec('png');
+        const raw = await png.encode(imageData);
+        try {
+          const ox = await getCodec('oxipng');
+          const optimise = ox.optimise || ox.default;
+          return await optimise(raw, { level: 2 });
+        } catch (e) { return raw; } // oxipng 載入失敗就用未最佳化的 PNG
+      }
+      const mod = await getCodec(targetCodec);
+      return mod.encode(imageData, { quality });
+    }
+    async function maybeResize(imageData, mode, value) {
+      if (mode === 'none') return imageData;
+      const W = imageData.width, H = imageData.height;
+      let scale;                                                   // 一律等比例：算出縮放比，兩邊一起套
+      if (mode === 'width')       scale = value / W;
+      else if (mode === 'height') scale = value / H;
+      else if (mode === 'long')   scale = value / Math.max(W, H);
+      else if (mode === 'short')  scale = value / Math.min(W, H);
+      else /* percent */          scale = value / 100;
+      const w = Math.max(1, Math.round(W * scale)), h = Math.max(1, Math.round(H * scale));
+      if (w === W && h === H) return imageData;
+      const resize = (await getCodec('resize')).default;
+      return resize(imageData, { width: w, height: h });
+    }
+
+    // ---- DOM ----
+    const $ = (id) => document.getElementById(id);
+    function el(tag, className, text) {
+      const n = document.createElement(tag);
+      if (className) n.className = className;
+      if (text != null) n.textContent = text;
+      return n;
+    }
+    const els = {
+      dropzone: $('dropzone'), fileInput: $('fileInput'), fileCount: $('fileCount'),
+      formatSeg: $('formatSeg'), qualitySlider: $('qualitySlider'), qualityVal: $('qualityVal'),
+      resizeSeg: $('resizeSeg'), resizeRow: $('resizeRow'), resizeLabel: $('resizeLabel'), resizeInput: $('resizeInput'), resizeUnit: $('resizeUnit'), resizeHint: $('resizeHint'),
+      goBtn: $('goBtn'), progress: $('progress'), progressBar: $('progressBar'), progressStatus: $('progressStatus'),
+      errorMsg: $('errorMsg'), errorText: $('errorText'), successMsg: $('successMsg'), successText: $('successText'),
+      previewEmpty: $('previewEmpty'), cmpPanel: $('cmpPanel'), cmpSummary: $('cmpSummary'),
+      clearBtn: $('clearBtn'), zipBtn: $('zipBtn'), cmpList: $('cmpList'),
+    };
+
+    const state = { items: [], format: 'orig', quality: 75, resizeMode: 'none', busy: false };
+
+    // ---- helpers ----
+    function fmtSize(b) {
+      if (b < 1024) return b + ' B';
+      if (b < 1024 * 1024) return (b / 1024).toFixed(b < 10240 ? 1 : 0) + ' KB';
+      return (b / 1048576).toFixed(2) + ' MB';
+    }
+    function sanitizeStem(name) {
+      const stem = (name || 'image').replace(/\.[^.]+$/, '').trim().replace(/[\\\/:*?"<>|]+/g, '_');
+      return stem || 'image';
+    }
+    function showError(m) { els.errorText.textContent = m; els.errorMsg.classList.add('is-shown'); els.successMsg.classList.remove('is-shown'); }
+    function showSuccess(m) { els.successText.textContent = m; els.successMsg.classList.add('is-shown'); els.errorMsg.classList.remove('is-shown'); }
+    function hideMessages() { els.errorMsg.classList.remove('is-shown'); els.successMsg.classList.remove('is-shown'); }
+    function triggerDownload(blob, filename) {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a'); a.href = url; a.download = filename;
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }
+    function targetCodecFor(item) { return state.format === 'orig' ? item.srcCodec : state.format; }
+
+    // ---- 清單渲染（全程用 DOM 節點建構，不用 innerHTML）----
+    function buildRow(item) {
+      const row = el('div', 'cmp-row');
+      const thumb = el('img', 'cmp-thumb'); thumb.alt = ''; thumb.src = item.thumbURL;
+      const info = el('div', 'cmp-info');
+      const nm = el('div', 'cmp-name', item.name); nm.title = item.name;
+      const sz = el('div', 'cmp-sizes');
+      const dl = el('button', 'btn btn--secondary', '下載'); dl.disabled = true;
+      dl.addEventListener('click', () => { if (item.blob) triggerDownload(item.blob, item.outName); });
+      info.append(nm, sz); row.append(thumb, info, dl);
+      item.rowEl = row; item.sizesEl = sz; item.dlBtn = dl;
+      renderRowStatus(item);
+      return row;
+    }
+    function renderRowStatus(item) {
+      const sz = item.sizesEl; sz.replaceChildren();
+      if (item.error) {
+        sz.append(document.createTextNode(fmtSize(item.origSize) + ' '), el('span', 'err', '· ' + item.error));
+        item.dlBtn.disabled = true; return;
+      }
+      if (item.blob == null) {
+        sz.append(document.createTextNode(fmtSize(item.origSize) + ' '), el('span', 'dim', '· 待壓縮'));
+        item.dlBtn.disabled = true; return;
+      }
+      const diff = item.origSize - item.newSize;
+      const pct = item.origSize ? Math.round(diff / item.origSize * 100) : 0;
+      const down = pct >= 0;
+      sz.append(
+        document.createTextNode(fmtSize(item.origSize) + ' → '),
+        el('span', 'new', fmtSize(item.newSize)),
+        document.createTextNode(' '),
+        el('span', down ? 'ratio-down' : 'ratio-up', (down ? '−' : '+') + Math.abs(pct) + '%')
+      );
+      item.dlBtn.disabled = false;
+    }
+    function renderList() {
+      const has = state.items.length > 0;
+      els.previewEmpty.hidden = has;
+      els.cmpPanel.hidden = !has;
+      if (has) {
+        els.cmpList.replaceChildren(...state.items.map(it => it.rowEl || buildRow(it)));
+        updateSummary();
+      }
+    }
+    function updateSummary() {
+      const n = state.items.length;
+      const done = state.items.filter(it => it.blob);
+      const sum = els.cmpSummary; sum.replaceChildren(document.createTextNode('共 ' + n + ' 張'));
+      if (done.length) {
+        const o = done.reduce((a, it) => a + it.origSize, 0);
+        const c = done.reduce((a, it) => a + it.newSize, 0);
+        const pct = o ? Math.round((o - c) / o * 100) : 0;
+        sum.append(
+          document.createTextNode('　已壓縮 ' + done.length + '／' + n + '　原 ' + fmtSize(o) + ' → ' + fmtSize(c) + '　'),
+          el('span', 'saved', '省 ' + (pct < 0 ? 0 : pct) + '%')
+        );
+      }
+      els.zipBtn.disabled = state.busy || done.length === 0;
+    }
+
+    // ---- 加檔 ----
+    function addFiles(fileList) {
+      hideMessages();
+      const accepted = [], rejected = [];
+      for (const f of fileList) {
+        if (SUPPORTED[f.type]) accepted.push(f);
+        else rejected.push(f.name || '(未命名)');
+      }
+      for (const f of accepted) {
+        state.items.push({
+          file: f, name: f.name, origSize: f.size, srcCodec: SUPPORTED[f.type],
+          thumbURL: URL.createObjectURL(f), blob: null, newSize: 0, outName: '', error: null,
+          rowEl: null, sizesEl: null, dlBtn: null,
+        });
+      }
+      els.fileCount.textContent = state.items.length + ' 張';
+      els.fileCount.classList.toggle('is-shown', state.items.length > 0);
+      renderList(); syncGoBtn();
+      if (rejected.length) showError('已略過不支援的檔案（只接受 JPEG / PNG / WEBP / AVIF）：' + rejected.join('、'));
+    }
+    function clearAll() {
+      if (state.busy) return;
+      state.items.forEach(it => { try { URL.revokeObjectURL(it.thumbURL); } catch (e) {} });
+      state.items = [];
+      els.fileCount.textContent = ''; els.fileCount.classList.remove('is-shown');
+      hideMessages(); renderList(); syncGoBtn();
+    }
+
+    // ---- 壓縮 ----
+    function readResizeValue() {
+      if (state.resizeMode === 'none') return null;
+      const v = parseInt(els.resizeInput.value, 10);
+      if (!Number.isFinite(v) || v <= 0) return NaN;
+      if (state.resizeMode === 'percent' && v > 400) return NaN; // 防呆：百分比上限 400
+      return v;
+    }
+
+    async function compressAll() {
+      if (state.busy || state.items.length === 0) return;
+      const resizeVal = readResizeValue();
+      if (state.resizeMode !== 'none' && Number.isNaN(resizeVal)) {
+        showError(state.resizeMode === 'percent' ? '請填寫 1–400 的百分比。' : '請填寫有效的像素數值。');
+        return;
+      }
+      state.busy = true; hideMessages(); syncControls();
+      els.progress.classList.add('is-shown'); els.progressBar.style.width = '0%';
+      const total = state.items.length; let done = 0, failed = 0;
+      els.progressStatus.textContent = '0 / ' + total;
+
+      // 重新壓縮：清掉舊結果
+      state.items.forEach(it => { it.blob = null; it.newSize = 0; it.error = null; renderRowStatus(it); });
+      updateSummary();
+
+      const usedNames = new Set();
+      for (const item of state.items) {
+        els.progressStatus.textContent = (done + failed) + ' / ' + total + '　' + item.name;
+        try {
+          const buf = await item.file.arrayBuffer();
+          let imageData = await decodeFile(buf, item.srcCodec);
+          imageData = await maybeResize(imageData, state.resizeMode, resizeVal);
+          const tc = targetCodecFor(item);
+          const out = await encodeImage(imageData, tc, state.quality);
+          const blob = new Blob([out], { type: FMT[tc].mime });
+          let base = sanitizeStem(item.name), ext = FMT[tc].ext, name = base + '.' + ext, n = 2;
+          while (usedNames.has(name)) name = base + '-' + (n++) + '.' + ext;
+          usedNames.add(name);
+          item.blob = blob; item.newSize = blob.size; item.outName = name; item.error = null;
+          done++;
+        } catch (e) {
+          item.error = String(e && e.message ? e.message : '壓縮失敗').slice(0, 40);
+          failed++;
+          console.error('compress failed:', item.name, e);
+        }
+        renderRowStatus(item);
+        els.progressBar.style.width = Math.round((done + failed) / total * 100) + '%';
+        updateSummary();
+        await new Promise(r => setTimeout(r, 0)); // 讓畫面更新
+      }
+
+      els.progressStatus.textContent = '完成';
+      setTimeout(() => els.progress.classList.remove('is-shown'), 600);
+      state.busy = false; syncControls();
+      if (done && !failed) showSuccess(done + ' 張壓縮完成。');
+      else if (done && failed) showError(done + ' 張完成，' + failed + ' 張失敗（見清單）。');
+      else showError('全部壓縮失敗，可能是 codec 載入失敗，請檢查網路後重試。');
+    }
+
+    async function downloadZip() {
+      const done = state.items.filter(it => it.blob);
+      if (!done.length || state.busy) return;
+      if (typeof JSZip === 'undefined') { showError('打包元件（JSZip）載入失敗，請檢查網路後重新整理。'); return; }
+      state.busy = true; syncControls();
+      try {
+        const zip = new JSZip();
+        for (const it of done) zip.file(it.outName, it.blob);
+        const content = await zip.generateAsync({ type: 'blob', compression: 'STORE' }); // 已是壓縮圖，ZIP 不再壓
+        triggerDownload(content, 'compressed-images.zip');
+      } catch (e) { showError('打包失敗：' + (e && e.message ? e.message : e)); }
+      state.busy = false; syncControls();
+    }
+
+    // ---- sync ----
+    function syncGoBtn() {
+      els.goBtn.disabled = state.items.length === 0 || state.busy;
+      els.goBtn.textContent = state.items.length === 0 ? '選擇圖片後開始壓縮'
+        : state.busy ? '壓縮中…' : '壓縮全部（' + state.items.length + ' 張）';
+    }
+    function syncControls() {
+      syncGoBtn();
+      els.qualitySlider.disabled = state.busy;
+      els.resizeInput.disabled = state.busy;
+      els.clearBtn.disabled = state.busy;
+      els.formatSeg.querySelectorAll('.segmented__btn').forEach(b => b.disabled = state.busy);
+      els.resizeSeg.querySelectorAll('.segmented__btn').forEach(b => b.disabled = state.busy);
+      updateSummary();
+    }
+    const RESIZE_LABEL = { width: '寬度', height: '高度', long: '把長邊縮為', short: '把短邊縮為', percent: '比例' };
+    const RESIZE_PX_DEFAULT = { width: '1920', height: '1080', long: '1920', short: '1080' };
+    function syncResizeRow() {
+      const m = state.resizeMode;
+      els.resizeRow.hidden = (m === 'none');
+      els.resizeHint.hidden = (m === 'none');
+      if (m === 'none') return;
+      els.resizeLabel.textContent = RESIZE_LABEL[m];
+      if (m === 'percent') { els.resizeUnit.textContent = '%'; els.resizeInput.value = '50'; }
+      else { els.resizeUnit.textContent = 'px'; if (els.resizeInput.value === '50' || !els.resizeInput.value) els.resizeInput.value = RESIZE_PX_DEFAULT[m]; }
+    }
+
+    // ---- events ----
+    els.dropzone.addEventListener('click', () => els.fileInput.click());
+    els.dropzone.addEventListener('dragover', (e) => { e.preventDefault(); els.dropzone.classList.add('is-dragover'); });
+    els.dropzone.addEventListener('dragleave', (e) => { e.preventDefault(); els.dropzone.classList.remove('is-dragover'); });
+    els.dropzone.addEventListener('drop', (e) => {
+      e.preventDefault(); els.dropzone.classList.remove('is-dragover');
+      if (e.dataTransfer.files.length) addFiles(e.dataTransfer.files);
+    });
+    els.fileInput.addEventListener('change', (e) => { if (e.target.files.length) { addFiles(e.target.files); e.target.value = ''; } });
+
+    els.formatSeg.querySelectorAll('.segmented__btn').forEach(btn => btn.addEventListener('click', () => {
+      if (state.busy) return;
+      state.format = btn.getAttribute('data-format');
+      els.formatSeg.querySelectorAll('.segmented__btn').forEach(b => b.setAttribute('aria-pressed', b === btn ? 'true' : 'false'));
+    }));
+    els.resizeSeg.querySelectorAll('.segmented__btn').forEach(btn => btn.addEventListener('click', () => {
+      if (state.busy) return;
+      state.resizeMode = btn.getAttribute('data-resize');
+      els.resizeSeg.querySelectorAll('.segmented__btn').forEach(b => b.setAttribute('aria-pressed', b === btn ? 'true' : 'false'));
+      syncResizeRow();
+    }));
+    els.qualitySlider.addEventListener('input', () => { state.quality = parseInt(els.qualitySlider.value, 10); els.qualityVal.textContent = state.quality; });
+    els.goBtn.addEventListener('click', compressAll);
+    els.zipBtn.addEventListener('click', downloadZip);
+    els.clearBtn.addEventListener('click', clearAll);
+
+    // ---- init ----
+    syncResizeRow(); syncGoBtn();
+  </script>
+</body>
+</html>

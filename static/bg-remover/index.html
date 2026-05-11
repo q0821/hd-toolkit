@@ -1,0 +1,449 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>圖片去背 · HD 的工具箱</title>
+  <meta name="description" content="去掉圖片背景：綠幕模式純前端即時去背，AI 模式用瀏覽器內辨識模型去任意背景。輸出透明 PNG，圖片不上傳。">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="/static/shared/app.css">
+  <script src="/static/shared/theme.js"></script>
+  <style>
+    /* 圖片去背工具專屬樣式（共用元件在 app.css） */
+    .bg-stage { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; }
+    .bg-figure {
+      position: relative; display: inline-block; line-height: 0; max-width: 100%;
+      border-radius: 6px; overflow: hidden; box-shadow: var(--shadow-sm);
+      /* 棋盤格底 — 透明區會露出 */
+      background-color: #fff;
+      background-image:
+        linear-gradient(45deg, #d8d8d8 25%, transparent 25%),
+        linear-gradient(-45deg, #d8d8d8 25%, transparent 25%),
+        linear-gradient(45deg, transparent 75%, #d8d8d8 75%),
+        linear-gradient(-45deg, transparent 75%, #d8d8d8 75%);
+      background-size: 18px 18px;
+      background-position: 0 0, 0 9px, 9px -9px, -9px 0;
+    }
+    .bg-figure img, .bg-figure canvas { display: block; max-width: 100%; max-height: calc(100vh - 200px); }
+    .bg-figure img[hidden], .bg-figure canvas[hidden] { display: none; }   /* 蓋過 app.css 全域的 img{display:block} */
+    .bg-figure--pickable { cursor: crosshair; }
+    .bg-caption { margin-top: var(--space-3); text-align: center; font-family: var(--font-mono); font-size: 12px; color: var(--text-dim); }
+
+    .keycolor-row { display: flex; align-items: center; gap: var(--space-3); }
+    .keycolor-swatch {
+      width: 28px; height: 28px; flex-shrink: 0; border-radius: var(--radius-sm);
+      border: 1px solid var(--border-strong); background: #2d8a3e;
+    }
+    .keycolor-text { flex: 1; font-size: 13px; color: var(--text-muted); }
+    .keycolor-text b { font-family: var(--font-mono); color: var(--text); font-weight: 500; }
+
+    .hint-line { margin-top: var(--space-2); font-size: 12px; color: var(--text-dim); }
+    .mode-pane { display: none; }
+    .mode-pane.is-active { display: block; }
+    .ai-note { font-size: 13px; line-height: 1.6; color: var(--text-muted); }
+    .ai-note b { color: var(--text); font-weight: 500; }
+  </style>
+</head>
+<body>
+
+  <header class="app-header">
+    <div class="app-header__row">
+      <a href="/" class="brand">HD 的工具箱</a>
+      <span class="crumb-sep">/</span>
+      <span class="crumb-cur">圖片去背</span>
+      <span class="app-header__spacer"></span>
+      <a href="/" class="btn btn--ghost" style="padding:6px 10px;font-size:13px">
+        <svg class="icon icon--sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+        回工具箱
+      </a>
+      <button type="button" class="theme-toggle" id="themeToggle" aria-label="切換亮 / 暗模式" title="切換亮 / 暗模式">
+        <svg class="icon icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
+        <svg class="icon icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <main class="app-main app-main--full">
+    <div class="tool-layout">
+
+      <!-- ===== 左：控制 ===== -->
+      <div class="tool-layout__controls">
+
+        <div class="section">
+          <div class="section__label"><span class="section__num">01</span> 上傳圖片</div>
+          <div class="dropzone" id="dropzone">
+            <input type="file" id="fileInput" accept="image/*" hidden>
+            <svg class="dropzone__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M8.5 10a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3z"/><path d="M21 15l-5-5L5 21"/></svg>
+            <div class="dropzone__title">拖曳圖片到這裡</div>
+            <div class="dropzone__hint">或點擊選擇檔案（PNG / JPG / WEBP）</div>
+            <span class="dropzone__file" id="fileName"></span>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section__label"><span class="section__num">02</span> 去背方式</div>
+          <div class="segmented" id="modeSeg" role="group" aria-label="去背方式">
+            <button type="button" class="segmented__btn" data-mode="chroma" aria-pressed="true">綠幕去背</button>
+            <button type="button" class="segmented__btn" data-mode="ai" aria-pressed="false">AI 智慧去背</button>
+          </div>
+        </div>
+
+        <!-- 綠幕模式 -->
+        <div class="mode-pane is-active" id="paneChroma">
+          <div class="section">
+            <div class="section__label"><span class="section__num">03</span> 背景色</div>
+            <div class="keycolor-row">
+              <span class="keycolor-swatch" id="keySwatch" aria-hidden="true"></span>
+              <span class="keycolor-text">目前 <b id="keyText">自動偵測</b></span>
+              <button type="button" class="btn btn--ghost" id="keyResetBtn" style="padding:6px 10px;font-size:13px" disabled>重設為自動</button>
+            </div>
+            <p class="hint-line">點右側預覽圖上的背景區可手動取色。</p>
+          </div>
+
+          <div class="section">
+            <div class="section__label"><span class="section__num">04</span> 微調</div>
+            <div class="stack-4">
+              <div>
+                <span class="field-label">容差（範圍越大去得越多）</span>
+                <div class="range-field">
+                  <input type="range" id="tolSlider" min="0" max="100" value="40">
+                  <span class="range-field__val" id="tolVal">40</span>
+                </div>
+              </div>
+              <div>
+                <span class="field-label">邊緣羽化</span>
+                <div class="range-field">
+                  <input type="range" id="featherSlider" min="0" max="100" value="25">
+                  <span class="range-field__val" id="featherVal">25</span>
+                </div>
+              </div>
+              <div>
+                <span class="field-label">去溢色（消除邊緣殘留的綠光）</span>
+                <div class="range-field">
+                  <input type="range" id="spillSlider" min="0" max="100" value="50">
+                  <span class="range-field__val" id="spillVal">50</span>
+                </div>
+              </div>
+            </div>
+            <div class="message message--error" id="lowSatMsg" style="margin-top:var(--space-4)">
+              <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 8v5M12 16h.01"/></svg>
+              <span>沒偵測到夠鮮明的單色背景。如果圖片真的是綠幕，點右側預覽圖上的背景區手動取色；否則改用 AI 智慧去背。</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- AI 模式 -->
+        <div class="mode-pane" id="paneAi">
+          <div class="section">
+            <div class="section__label"><span class="section__num">03</span> 關於 AI 去背</div>
+            <p class="ai-note">
+              用瀏覽器內建的辨識模型把主體從<b>任意背景</b>切出來，適合人像、商品照等沒有綠幕的圖。<br>
+              首次使用會下載辨識模型（<b>數十 MB</b>，之後瀏覽器會快取）；整個過程都在你的電腦上跑，<b>圖片不會上傳</b>。
+            </p>
+          </div>
+        </div>
+
+        <button type="button" class="btn btn--primary btn--block" id="goBtn" disabled>選擇圖片後開始去背</button>
+
+        <div class="progress" id="progress">
+          <div class="progress__header">
+            <span class="progress__label" id="progressLabel">處理中</span>
+            <span class="progress__status" id="progressStatus"></span>
+          </div>
+          <div class="progress__track"><div class="progress__bar" id="progressBar"></div></div>
+        </div>
+
+        <div class="message message--error" id="errorMsg">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M15 9l-6 6M9 9l6 6"/></svg>
+          <span id="errorText"></span>
+        </div>
+        <div class="message message--success" id="successMsg">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><path d="M22 4L12 14.01l-3-3"/></svg>
+          <span id="successText">去背完成，透明 PNG 已開始下載。</span>
+        </div>
+      </div>
+
+      <!-- ===== 右：預覽 ===== -->
+      <div class="tool-layout__preview" id="previewArea">
+        <div class="preview-empty" id="previewEmpty">
+          <svg class="preview-empty__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="6" cy="6" r="3"/><path d="M8.12 8.12 12 12"/><path d="M20 4 8.12 15.88"/><circle cx="6" cy="18" r="3"/><path d="M14.8 14.8 20 20"/></svg>
+          <p>上傳圖片後預覽將顯示於此</p>
+        </div>
+        <div class="bg-stage" id="previewStage" hidden>
+          <div>
+            <div class="bg-figure" id="previewFigure">
+              <img id="previewImg" alt="預覽" hidden>
+              <canvas id="previewCanvas" hidden></canvas>
+            </div>
+            <div class="bg-caption" id="previewCaption"></div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </main>
+
+  <script src="/static/shared/chroma-key.js"></script>
+  <script>
+  (function () {
+    "use strict";
+    var IMGLY_URL = "https://cdn.jsdelivr.net/npm/@imgly/background-removal@1/+esm";
+
+    var $ = function (id) { return document.getElementById(id); };
+    var els = {
+      dropzone: $("dropzone"), fileInput: $("fileInput"), fileName: $("fileName"),
+      modeSeg: $("modeSeg"), paneChroma: $("paneChroma"), paneAi: $("paneAi"),
+      keySwatch: $("keySwatch"), keyText: $("keyText"), keyResetBtn: $("keyResetBtn"),
+      tolSlider: $("tolSlider"), tolVal: $("tolVal"),
+      featherSlider: $("featherSlider"), featherVal: $("featherVal"),
+      spillSlider: $("spillSlider"), spillVal: $("spillVal"),
+      lowSatMsg: $("lowSatMsg"),
+      goBtn: $("goBtn"),
+      progress: $("progress"), progressLabel: $("progressLabel"), progressBar: $("progressBar"), progressStatus: $("progressStatus"),
+      errorMsg: $("errorMsg"), errorText: $("errorText"), successMsg: $("successMsg"), successText: $("successText"),
+      previewEmpty: $("previewEmpty"), previewStage: $("previewStage"), previewFigure: $("previewFigure"),
+      previewImg: $("previewImg"), previewCanvas: $("previewCanvas"), previewCaption: $("previewCaption")
+    };
+
+    var state = {
+      mode: "chroma",
+      file: null, img: null, imgURL: null,
+      keyColor: null,            // null = 自動
+      busy: false,
+      chromaCanvas: null,        // 綠幕模式最近一次處理結果（給下載用）
+      aiBlob: null, aiURL: null, // AI 模式結果
+      removeBackground: null     // 延遲載入的 @imgly 函式
+    };
+
+    // ---------- 訊息 / 進度 ----------
+    function showError(msg) { els.errorText.textContent = msg; els.errorMsg.classList.add("is-shown"); els.successMsg.classList.remove("is-shown"); }
+    function showSuccess(msg) { els.successText.textContent = msg; els.successMsg.classList.add("is-shown"); els.errorMsg.classList.remove("is-shown"); }
+    function hideMessages() { els.errorMsg.classList.remove("is-shown"); els.successMsg.classList.remove("is-shown"); }
+    function showProgress(label) { els.progressLabel.textContent = label || "處理中"; els.progressStatus.textContent = ""; els.progressBar.style.width = "0%"; els.progress.classList.add("is-shown"); }
+    function setProgress(pct, status) { els.progressBar.style.width = Math.max(0, Math.min(100, pct)) + "%"; if (status != null) els.progressStatus.textContent = status; }
+    function hideProgress() { els.progress.classList.remove("is-shown"); }
+
+    function sanitizeStem(name) {
+      var stem = (name || "image").replace(/\.[^.]+$/, "").trim().replace(/[\\\/:*?"<>|]+/g, "_");
+      return stem || "image";
+    }
+    function triggerDownload(blob, filename) {
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement("a");
+      a.href = url; a.download = filename;
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+    }
+
+    // ---------- 預覽顯示 ----------
+    function showImgEl() { els.previewImg.hidden = false; els.previewCanvas.hidden = true; }
+    function showCanvasEl() { els.previewCanvas.hidden = false; els.previewImg.hidden = true; }
+
+    function showOriginal() {
+      els.previewImg.src = state.imgURL;
+      showImgEl();
+      els.previewFigure.classList.remove("bg-figure--pickable");
+      caption("原圖 " + state.img.naturalWidth + " × " + state.img.naturalHeight);
+    }
+    function showChromaResult(out) {
+      var c = els.previewCanvas;
+      c.width = out.canvas.width; c.height = out.canvas.height;
+      c.getContext("2d").drawImage(out.canvas, 0, 0);
+      showCanvasEl();
+      els.previewFigure.classList.add("bg-figure--pickable");
+      caption("背景色 " + ChromaKey.rgbToCss(out.keyColor) + (state.keyColor ? "（手動）" : "（自動）") +
+              "　·　原圖 " + state.img.naturalWidth + " × " + state.img.naturalHeight);
+    }
+    function showAiResult(url) {
+      els.previewImg.src = url;
+      showImgEl();
+      els.previewFigure.classList.remove("bg-figure--pickable");
+      caption("AI 去背　·　原圖 " + state.img.naturalWidth + " × " + state.img.naturalHeight);
+    }
+    function caption(t) { els.previewCaption.textContent = t; }
+
+    // ---------- 綠幕去背（即時） ----------
+    function chromaOpts() {
+      return {
+        keyColor: state.keyColor || undefined,
+        tolerance: parseInt(els.tolSlider.value, 10) / 100,
+        smoothness: parseInt(els.featherSlider.value, 10) / 100,
+        spill: parseInt(els.spillSlider.value, 10) / 100
+      };
+    }
+    function runChroma() {
+      if (!state.img) return;
+      var out;
+      try { out = ChromaKey.process(state.img, chromaOpts()); }
+      catch (e) { showError("處理失敗：" + (e && e.message ? e.message : e)); return; }
+      state.chromaCanvas = out.canvas;
+      els.lowSatMsg.classList.toggle("is-shown", !!out.lowSaturation);
+      // 若是「自動偵測」，把實際採用的色更新到色塊
+      if (!state.keyColor) { els.keySwatch.style.background = ChromaKey.rgbToCss(out.keyColor); els.keyText.textContent = "自動偵測"; }
+      showChromaResult(out);
+    }
+    var chromaDebounce = null;
+    function runChromaDebounced() {
+      if (chromaDebounce) clearTimeout(chromaDebounce);
+      chromaDebounce = setTimeout(function () { chromaDebounce = null; runChroma(); }, 140);
+    }
+
+    function setKeyColor(rgb) {
+      state.keyColor = rgb;
+      if (rgb) { els.keySwatch.style.background = ChromaKey.rgbToCss(rgb); els.keyText.textContent = ChromaKey.rgbToCss(rgb); els.keyResetBtn.disabled = false; }
+      else { els.keyText.textContent = "自動偵測"; els.keyResetBtn.disabled = true; }
+      if (state.mode === "chroma") runChroma();
+    }
+
+    // 點預覽圖（綠幕模式）→ 取該點原圖像素色當背景色
+    els.previewFigure.addEventListener("click", function (e) {
+      if (state.mode !== "chroma" || !state.img || state.busy) return;
+      var visible = els.previewCanvas.hidden ? els.previewImg : els.previewCanvas;
+      var rect = visible.getBoundingClientRect();
+      if (rect.width === 0 || rect.height === 0) return;
+      var px = (e.clientX - rect.left) / rect.width * state.img.naturalWidth;
+      var py = (e.clientY - rect.top) / rect.height * state.img.naturalHeight;
+      setKeyColor(ChromaKey.colorAt(state.img, px, py));
+    });
+
+    // ---------- 模式切換 ----------
+    function setMode(mode) {
+      if (state.busy) return;
+      state.mode = mode;
+      els.modeSeg.querySelectorAll(".segmented__btn").forEach(function (b) { b.setAttribute("aria-pressed", b.getAttribute("data-mode") === mode ? "true" : "false"); });
+      els.paneChroma.classList.toggle("is-active", mode === "chroma");
+      els.paneAi.classList.toggle("is-active", mode === "ai");
+      hideMessages();
+      syncGoBtn();
+      if (!state.img) return;
+      if (mode === "chroma") runChroma();
+      else if (state.aiURL) showAiResult(state.aiURL); else showOriginal();
+    }
+
+    function syncGoBtn() {
+      els.goBtn.disabled = !state.img || state.busy;
+      if (!state.img) els.goBtn.textContent = "選擇圖片後開始去背";
+      else if (state.busy) els.goBtn.textContent = "處理中…";
+      else els.goBtn.textContent = state.mode === "ai" ? "AI 去背並下載 PNG" : "下載透明 PNG";
+    }
+
+    // ---------- 載入檔案 ----------
+    function loadFile(file) {
+      hideMessages(); els.lowSatMsg.classList.remove("is-shown");
+      if (!file) return;
+      if (!file.type || file.type.indexOf("image/") !== 0) { showError("請選擇圖片檔（PNG / JPG / WEBP 等）。"); return; }
+      if (state.imgURL) URL.revokeObjectURL(state.imgURL);
+      if (state.aiURL) { URL.revokeObjectURL(state.aiURL); state.aiURL = null; state.aiBlob = null; }
+      var url = URL.createObjectURL(file);
+      var img = new Image();
+      img.onload = function () {
+        if (!img.naturalWidth || !img.naturalHeight) { URL.revokeObjectURL(url); showError("無法讀取這張圖片的尺寸。"); return; }
+        state.file = file; state.img = img; state.imgURL = url;
+        state.keyColor = null; state.chromaCanvas = null;
+        els.keyResetBtn.disabled = true; els.keyText.textContent = "自動偵測";
+        els.fileName.textContent = file.name + "  ·  " + img.naturalWidth + "×" + img.naturalHeight;
+        els.fileName.classList.add("is-shown");
+        els.previewEmpty.hidden = true; els.previewStage.hidden = false;
+        if (state.mode === "chroma") runChroma(); else showOriginal();
+        syncGoBtn();
+      };
+      img.onerror = function () { URL.revokeObjectURL(url); showError("這個檔案無法當作圖片載入。"); };
+      img.src = url;
+    }
+
+    // ---------- 動作：去背並下載 ----------
+    function canvasToBlob(canvas, mime) {
+      return new Promise(function (resolve, reject) {
+        canvas.toBlob(function (b) { b ? resolve(b) : reject(new Error("產生圖片失敗")); }, mime);
+      });
+    }
+
+    async function runAi() {
+      if (!state.removeBackground) {
+        showProgress("載入 AI 元件");
+        try {
+          var mod = await import(IMGLY_URL);
+          state.removeBackground = mod.default || mod.removeBackground || mod.imglyRemoveBackground;
+          if (typeof state.removeBackground !== "function") throw new Error("元件格式不符");
+        } catch (e) {
+          throw new Error("AI 去背元件載入失敗，請檢查網路連線後重試，或改用「綠幕去背」。");
+        }
+      }
+      showProgress("AI 去背");
+      var cfg = {
+        model: "isnet_quint8",
+        output: { format: "image/png" },
+        progress: function (key, current, total) {
+          var pct = total ? Math.round(current / total * 100) : 0;
+          var what = String(key).indexOf("fetch") === 0 ? "下載模型" : "處理";
+          setProgress(pct, what + " " + pct + "%");
+        }
+      };
+      var blob = await state.removeBackground(state.file, cfg);
+      setProgress(100, "完成");
+      if (state.aiURL) URL.revokeObjectURL(state.aiURL);
+      state.aiBlob = blob; state.aiURL = URL.createObjectURL(blob);
+      showAiResult(state.aiURL);
+      return blob;
+    }
+
+    async function doGo() {
+      if (!state.img || state.busy) return;
+      state.busy = true; hideMessages(); syncGoBtn();
+      document.querySelectorAll("#modeSeg .segmented__btn").forEach(function (b) { b.disabled = true; });
+      try {
+        var blob, name = sanitizeStem(state.file && state.file.name) + "-cutout.png";
+        if (state.mode === "ai") {
+          blob = await runAi();
+        } else {
+          if (chromaDebounce) { clearTimeout(chromaDebounce); chromaDebounce = null; }
+          runChroma();
+          if (!state.chromaCanvas) throw new Error("還沒有可下載的結果。");
+          blob = await canvasToBlob(state.chromaCanvas, "image/png");
+        }
+        triggerDownload(blob, name);
+        showSuccess("去背完成，透明 PNG（" + name + "）已開始下載。");
+      } catch (e) {
+        showError(e && e.message ? e.message : "去背失敗。");
+      } finally {
+        state.busy = false;
+        hideProgress();
+        document.querySelectorAll("#modeSeg .segmented__btn").forEach(function (b) { b.disabled = false; });
+        syncGoBtn();
+      }
+    }
+
+    // ---------- events ----------
+    els.dropzone.addEventListener("click", function () { els.fileInput.click(); });
+    els.dropzone.addEventListener("dragover", function (e) { e.preventDefault(); els.dropzone.classList.add("is-dragover"); });
+    els.dropzone.addEventListener("dragleave", function (e) { e.preventDefault(); els.dropzone.classList.remove("is-dragover"); });
+    els.dropzone.addEventListener("drop", function (e) {
+      e.preventDefault(); els.dropzone.classList.remove("is-dragover");
+      if (e.dataTransfer.files.length) loadFile(e.dataTransfer.files[0]);
+    });
+    els.fileInput.addEventListener("change", function (e) { if (e.target.files.length) loadFile(e.target.files[0]); });
+
+    els.modeSeg.querySelectorAll(".segmented__btn").forEach(function (btn) {
+      btn.addEventListener("click", function () { setMode(btn.getAttribute("data-mode")); });
+    });
+
+    function bindSlider(slider, valEl) {
+      slider.addEventListener("input", function () {
+        valEl.textContent = slider.value;
+        if (state.mode === "chroma" && state.img) runChromaDebounced();
+      });
+    }
+    bindSlider(els.tolSlider, els.tolVal);
+    bindSlider(els.featherSlider, els.featherVal);
+    bindSlider(els.spillSlider, els.spillVal);
+
+    els.keyResetBtn.addEventListener("click", function () { if (!state.busy) setKeyColor(null); });
+    els.goBtn.addEventListener("click", doGo);
+
+    // ---------- init ----------
+    syncGoBtn();
+  })();
+  </script>
+</body>
+</html>

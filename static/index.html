@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>HD 的工具箱</title>
-  <meta name="description" content="一個個趁手的前端小工具：PDF 轉 JPG、圖片切片，陸續增加。">
+  <meta name="description" content="一個個趁手的前端小工具：PDF 轉 JPG、圖片切片、圖片去背、圖片壓縮，陸續增加。">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="/static/shared/app.css">
@@ -40,8 +40,19 @@
       <a href="/image-slicer" class="tool-card">
         <svg class="tool-card__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18M15 3v18M3 9h18M3 15h18"/></svg>
         <h3>圖片切片</h3>
-        <p>上傳圖片，選欄數與列數，切成等分小圖，打包成 ZIP 下載。</p>
-        <span class="tool-card__tag">即將推出</span>
+        <p>上傳圖片，選欄數與列數，切成等分小圖，可選一併去除綠幕，打包成 ZIP 下載。</p>
+      </a>
+
+      <a href="/bg-remover" class="tool-card">
+        <svg class="tool-card__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="6" cy="6" r="3"/><path d="M8.12 8.12 12 12"/><path d="M20 4 8.12 15.88"/><circle cx="6" cy="18" r="3"/><path d="M14.8 14.8 20 20"/></svg>
+        <h3>圖片去背</h3>
+        <p>去掉圖片背景：綠幕模式即時去背，AI 模式去任意背景。輸出透明 PNG。</p>
+      </a>
+
+      <a href="/image-compressor" class="tool-card">
+        <svg class="tool-card__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><path d="M3.27 6.96 12 12.01l8.73-5.05M12 22.08V12"/></svg>
+        <h3>圖片壓縮</h3>
+        <p>批次壓縮圖片，JPEG / PNG / WEBP / AVIF 互轉、可調品質與縮放，打包下載。</p>
       </a>
 
       <div class="tool-card tool-card--soon" aria-disabled="true">

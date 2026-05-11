@@ -40,10 +40,22 @@ async def page_pdf2jpg():
     return _page("pdf2jpg", "index.html")
 
 
-# 圖片切片工具頁面（純前端）— 階段 3 會放上實際內容
+# 圖片切片工具頁面（純前端）
 @app.get("/image-slicer", include_in_schema=False)
 async def page_image_slicer():
     return _page("image-slicer", "index.html")
+
+
+# 圖片去背工具頁面（純前端：綠幕模式 Canvas、AI 模式瀏覽器跑模型）
+@app.get("/bg-remover", include_in_schema=False)
+async def page_bg_remover():
+    return _page("bg-remover", "index.html")
+
+
+# 圖片壓縮工具頁面（純前端：瀏覽器跑 jSquash WASM codec）
+@app.get("/image-compressor", include_in_schema=False)
+async def page_image_compressor():
+    return _page("image-compressor", "index.html")
 
 
 @app.get("/api/health")
