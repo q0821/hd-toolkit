@@ -301,3 +301,33 @@ GET  /api/health
 | 2026-05-11 | 先做靜態（9a），動態 APNG（9b）接著做；AI 生成（上傳照片選風格自動生圖）獨立成第三層、暫不做 | 漸進式：靜態涵蓋最常見情境且零外部依賴；APNG 加 UPNG.js；AI 那層要串 gpt-image / Gemini「nano-banana」之類，涉及 API key（localStorage）/ CORS / 一致性（InstantID 類）/ 成本，規模與調性都不同，等前面上了再規劃 |
 | 2026-05-11 | 每張貼圖先「自動裁掉透明邊」再 fit + 補留白 | 不裁的話內容周圍的透明 padding 會害 fit 把角色縮小；全不透明（如 JPEG）時 bbox = 整張，等於沒裁，無害 |
 | 2026-05-11 | 自動尺寸＝輸出 canvas 貼合內容（長 ≤ 370、高 ≤ 320、偶數），不是一律 370×320 | LINE 只要求「不超過」且不喜歡大片空白；貼合內容 + 統一留白是常見做法。另給「正方形 320×320」選項給想要整齊一致的人 |
+
+---
+
+# 追加：bg-remover 品質強化 — 手動修補 + 邊緣調整（2026-05-11）
+
+AI 自動去背已「堪用」（imgly fp16 + 碎屑清理）；再往上：① 手動修補筆刷（AI 給 90%、人刷掉剩下的，最可靠）② 邊緣收縮 / 羽化（消 halo、平滑）。都改在 `static/bg-remover/index.html` 裡，預覽改成 canvas 為主的可編輯介面。
+
+## 階段 10：bg-remover 加手動修補 + 邊緣調整
+**目標**：去完背景（綠幕或 AI）後能在預覽上用筆刷擦掉 / 還原修瑕疵；AI 結果可調邊緣收縮 / 羽化（不重跑模型）
+- **預覽重構**：`previewCanvas` 成為唯一顯示 + 編輯面；`state.origCanvas`（原圖全尺寸，給「還原」筆刷）、`state.resultCanvas`（目前結果，透明底）；綠幕 / AI 結果都畫進 `previewCanvas`；下載匯出 `previewCanvas`（含筆刷編輯）
+- **邊緣調整（AI 模式）**：模型 → `blobToCanvas` → `cleanAlphaMask` → 存成 `aiCleanCanvas`；再 `applyAiEdge()` = 複製 aiCleanCanvas → `erodeAlpha`（按收縮 px）→ `featherAlpha`（按羽化 px，用 `ctx.filter='blur()'` 對「alpha 轉灰階」的暫存 canvas 模糊再寫回）→ `resultCanvas` → 顯示。兩條 `.range`：邊緣收縮 0–3px（預設 1）、羽化 0–4px（預設 1），改動 → debounce 重跑 `applyAiEdge`（快、不碰模型）
+- **手動修補（兩模式皆可）**：有結果時預覽下方出現工具列 — `.segmented` 擦掉 / 還原 ｜ `.range` 筆刷大小（8–120px）｜「復原」按鈕。canvas 上 pointer / touch 事件畫圓形軟筆刷：擦掉＝`globalCompositeOperation='destination-out'` + 徑向漸層；還原＝把 `origCanvas` 對應區域用徑向漸層 alpha 混回 `previewCanvas`。每一筆 down 時把 `getImageData` 推進復原堆疊（上限 ~8）；復原 = pop + putImageData。client 座標 → canvas 像素座標要換算 CSS 縮放
+- **下載**：一律匯出目前 `previewCanvas`（透明 PNG）；綠幕模式調滑桿 / 重新取色會重畫 `previewCanvas`（會清掉未存的筆刷編輯 — 在重畫前若有編輯先提示？v1 先直接重畫，之後再說）
+
+**成功標準**：
+- 綠幕去背 → 預覽是 canvas → 點圖取色 / 調容差仍正常 → 拿「擦掉」筆刷塗背景殘留 → 那塊變透明 → 下載 PNG 含編輯
+- AI 去背 → 結果出來 → 調「邊緣收縮 2」→ 主體邊緣往內縮（halo 消）、不重跑模型 → 調「羽化 2」→ 邊緣變柔 → 用「還原」筆刷把被誤刪的補回 → 下載含編輯
+- 「復原」能一步步退回筆刷；換圖 / 換模式會重置
+- 手機（touch）能用筆刷；亮 / 暗模式正常；無 JS error
+
+**測試**：合成綠幕圖（測點取色 + 擦筆刷 + 下載）、unsplash 人像跑 AI（測收縮 / 羽化 slider 不重跑模型、還原筆刷、復原堆疊、下載）、極端：超大圖跳過 cleanup 仍能筆刷；桌機 + 觸控
+
+**狀態**：完成。bg-remover 全面改寫：預覽改 canvas 為主、`origCanvas` 供「還原」筆刷；AI pipeline 加 `aiCleanCanvas` 快取 + `applyAiEdge`（erode + canvas-blur feather，從快取重套用、不重跑模型）+ 邊緣收縮 / 羽化滑桿；手動筆刷 擦掉（`destination-out` 徑向漸層）/ 還原（原圖區域 `destination-in` 遮罩疊回）+ 大小滑桿 + 復原堆疊（ImageData 上限 6）+ pointer / touch；**追加** 預覽縮放 100–400%（CSS fit 寬 × zoom、`overflow:auto` 捲軸、座標映射靠 `getBoundingClientRect` 自動跟縮放、可放大精修）；主按鈕情境化（AI 無結果→「開始 AI 去背」、其餘→「下載透明 PNG」）；AI pane 加「重跑 AI 辨識」。無頭瀏覽器實測：綠幕（點取色 / 擦掉筆刷 → 中央透明 / 復原回復）；AI（開始 → 邊緣區段出現 → 收縮 1→3 那點 alpha 60→20、不重跑模型 → 羽化 4 無誤 → 還原筆刷 → 不透明 → 下載）；縮放（100%→200% 顯示寬 ×2、200% 下擦筆刷座標正確、回 100% inline 樣式清空）；皆無 JS error。（image-slicer 那邊本來就只有「去除綠幕」、沒有 AI 去背，無需改動。）
+
+## 追加決策紀錄
+| Date | Decision | Rationale |
+|------|----------|-----------|
+| 2026-05-11 | bg-remover 預覽改成 canvas 為主、可直接畫筆刷；下載匯出該 canvas | 自動去背不會 100% 完美，手動修補是「堪用 → 完美」最可靠的一步、且不挑模型、不增加下載量 |
+| 2026-05-11 | 「二」先做邊緣收縮（erode）+ 羽化（canvas blur on alpha），不做 guided filter | erode 消 halo 是最常見的需求、便宜又穩；guided filter（用原圖細化遮罩、找回髮絲）較重、有 halo 風險，留待之後 |
+| 2026-05-11 | 邊緣收縮 / 羽化從「模型輸出後清理過的 aiCleanCanvas」重新套用，不重跑模型 | 調滑桿要即時，重跑 80MB 模型不可接受；erode/feather 都是毫秒級 |
