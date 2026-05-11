@@ -142,8 +142,9 @@
               <div>
                 <span class="field-label">模型</span>
                 <select class="text-field" id="openaiModel">
-                  <option value="gpt-image-1">gpt-image-1</option>
+                  <option value="gpt-image-2" selected>GPT Image 2（最新）</option>
                   <option value="gpt-image-1.5">gpt-image-1.5</option>
+                  <option value="gpt-image-1">gpt-image-1</option>
                   <option value="__custom__">自訂…</option>
                 </select>
               </div>
@@ -411,7 +412,7 @@
 
     // ---------- 模型 / key ----------
     function currentModel() {
-      if (state.provider === "openai") { var v = els.openaiModel.value; return v === "__custom__" ? (els.openaiModelCustom.value.trim() || "gpt-image-1") : v; }
+      if (state.provider === "openai") { var v = els.openaiModel.value; return v === "__custom__" ? (els.openaiModelCustom.value.trim() || "gpt-image-2") : v; }
       var g = els.googleModel.value; return g === "__custom__" ? (els.googleModelCustom.value.trim() || "gemini-2.5-flash-image") : g;
     }
     function currentKey() { return (state.provider === "openai" ? els.openaiKey.value : els.googleKey.value).trim(); }
