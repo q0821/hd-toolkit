@@ -10,7 +10,8 @@
 | **PDF to JPG** | `/pdf2jpg` | 把 PDF 每一頁轉成 JPG，可調解析度（DPI 72–600）與品質（1–100），打包成 ZIP 下載。 | 後端（FastAPI + poppler） |
 | **圖片切片** | `/image-slicer` | 上傳圖片，選欄數（水平）與列數（垂直），切成等分小圖。最後一欄/列吃餘數、不掉邊緣像素。可選 PNG / JPG / WEBP，打包成 ZIP。檔名為 `<前綴>列-欄.png`（預設前綴 `split-` → `split-1-1.png`、`split-1-2.png`…；前綴可清空 → `1-1.png`…）。可勾「去除綠幕」，先把整張的綠幕背景去掉再切（此時格式限 PNG / WEBP）。 | 純前端（Canvas + JSZip，檔案不上傳） |
 | **圖片去背** | `/bg-remover` | 去掉圖片背景，輸出透明 PNG。**綠幕模式**：純 Canvas 即時去背，自動偵測背景色、可點預覽圖手動取色，容差 / 邊緣羽化 / 去溢色可調。**AI 模式**：用 [`@imgly/background-removal`](https://github.com/imgly/background-removal-js) 在瀏覽器跑辨識模型去任意背景（首次會下載模型、之後快取）。 | 純前端（綠幕＝Canvas；AI＝瀏覽器內 WASM/ONNX，檔案都不上傳） |
-| **圖片壓縮** | `/image-compressor` | 批次壓縮圖片：JPEG / PNG / WEBP / AVIF 互轉、可調品質（JPEG/WEBP/AVIF；PNG 走 oxipng 無損最佳化）、可縮放（依寬 / 依高 / 百分比）。每張顯示原大小 → 壓縮後大小與壓縮率，可個別或全部打包 ZIP 下載。選項與互動參考自 [pic-smaller](https://github.com/joye61/pic-smaller)（MIT）；壓縮由 [jSquash](https://github.com/jamsinclair/jsquash) WASM codec（mozjpeg / oxipng / libwebp / libavif）提供，首次使用會下載 codec、之後快取。 | 純前端（瀏覽器內 WASM codec + JSZip，檔案不上傳） |
+| **圖片壓縮** | `/image-compressor` | 批次壓縮圖片：JPEG / PNG / WEBP / AVIF 互轉、可調品質（JPEG/WEBP/AVIF；PNG 走 oxipng 無損最佳化）、可縮放（寬度 / 高度 / 長邊 / 短邊 / 比例，皆等比例）。每張顯示原大小 → 壓縮後大小與壓縮率，可個別或全部打包 ZIP 下載。選項與互動參考自 [pic-smaller](https://github.com/joye61/pic-smaller)（MIT）；壓縮由 [jSquash](https://github.com/jamsinclair/jsquash) WASM codec（mozjpeg / oxipng / libwebp / libavif）提供，首次使用會下載 codec、之後快取。 | 純前端（瀏覽器內 WASM codec + JSZip，檔案不上傳） |
+| **LINE 貼圖打包** | `/line-sticker` | 把素材變成符合 [LINE Creators Market](https://creator.line.me/) 規格的貼圖包：輸入「多張圖片」或「一張拼版大圖（自動切成欄×列）」，可選去除綠幕，自動裁掉透明邊 → 縮放置中（自動 ≤ 370×320、長寬偶數、可設四周留白；或正方形 320×320），並用第 1 張生成 `main.png`（240×240）與 `tab.png`（96×74），命名 `01.png…`，打包 ZIP。靜態與動態都支援 —— 動態貼圖把多張影格（或一張影格拼版）組成 APNG（用 [UPNG.js](https://github.com/photopea/UPNG.js) 編碼，≤ 320×270、檔案超過 300 KB 會自動降色）。 | 純前端（Canvas + 共用去背模組 + JSZip，檔案不上傳） |
 
 ## 技術棧
 
@@ -40,7 +41,8 @@ hd-toolkit/
     ├── pdf2jpg/index.html
     ├── image-slicer/index.html
     ├── bg-remover/index.html
-    └── image-compressor/index.html
+    ├── image-compressor/index.html
+    └── line-sticker/index.html
 ```
 
 > 第三方致謝：圖片壓縮工具的選項 / 互動參考自 [pic-smaller](https://github.com/joye61/pic-smaller)（MIT），壓縮實作改用 [jSquash](https://github.com/jamsinclair/jsquash) WASM codec（CDN 載入）；圖片去背的 AI 模式用 [`@imgly/background-removal`](https://github.com/imgly/background-removal-js)；ZIP 打包用 [JSZip](https://stuk.github.io/jszip/)。

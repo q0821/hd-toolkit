@@ -58,6 +58,12 @@ async def page_image_compressor():
     return _page("image-compressor", "index.html")
 
 
+# LINE 貼圖打包工具頁面（純前端）
+@app.get("/line-sticker", include_in_schema=False)
+async def page_line_sticker():
+    return _page("line-sticker", "index.html")
+
+
 @app.get("/api/health")
 async def health_check():
     """健康檢查端點。"""

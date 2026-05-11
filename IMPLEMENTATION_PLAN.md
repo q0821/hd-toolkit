@@ -257,3 +257,46 @@ GET  /api/health
 | 2026-05-11 | 不 fork pic-smaller，改用 jSquash codec + vanilla 重寫 UI、致謝 pic-smaller | pic-smaller 是 React/Vite/Ant Design + build pipeline，跟本專案「純手刻 HTML/CSS/JS、無框架、無 build」原則衝突；真正可重用的是底層 WASM codec |
 | 2026-05-11 | codec 選 jSquash（mozjpeg/oxipng/libwebp/libavif 的模組化 WASM port），非 pic-smaller 原本那組 | jSquash 模組化、unpkg `?module` CDN 直接用、無 build、維護活躍；pic-smaller 那組（wasm-image-compressor / wasm_avif / gifsicle-wasm / svgo）來源較雜 |
 | 2026-05-11 | v1 不做 GIF / SVG，壓縮跑主執行緒不開 Worker | 先求能用且簡單；GIF/SVG 的 lib 較重、Worker 增加複雜度，列為後續優化 |
+
+---
+
+# 追加：LINE 貼圖打包工具（2026-05-11）
+
+獨立工具 `/line-sticker`（純前端），把素材變成符合 LINE Creators Market 規格、可直接上傳的整包。**只做「打包」這層**（切 / 去背 / fit / 偶數化 / 留白 / main / tab / 命名 / ZIP）；「上傳照片 → 選風格 → AI 自動生成多張」是另一層（要串影像生成 API，gpt-image / Gemini「nano-banana」之類；key 走 localStorage、可能再加薄後端 proxy 解 CORS）—— 那層暫不做，等這層上了再規劃。
+
+## 階段 9a：LINE 貼圖打包工具 `/line-sticker`（靜態）
+**目標**：上傳多張圖片（或一張拼版大圖自動切）→（可選去綠幕）→ 自動裁透明邊、fit 進 LINE 尺寸、偶數化、補透明留白 → 產出 `01.png…`、`main.png`(240×240)、`tab.png`(96×74)，打包 ZIP
+- UI（沿用 `app.css` 元件 + 左控制 / 右預覽，重用 `static/shared/chroma-key.js` + JSZip CDN）：
+  - `01 來源` `.segmented`：多張圖片（dropzone multiple）/ 拼版大圖（dropzone single + 欄 / 列 `.stepper` → 切成 欄×列 張）
+  - `02 去背` `.segmented`：不去背（已透明）/ 去除綠幕（+ 容差 `.range`，dimmed when 不去背）
+  - `03 尺寸與留白` `.segmented`：自動（貼合內容，長 ≤ 370、高 ≤ 320，偶數）/ 正方形 320×320；+ 四周留白 `.range` 0–40 px（預設 10）
+  - `04`（提示）：會用第 1 張自動生 `main.png`(240×240) 與 `tab.png`(96×74)
+  - 狀態列：目前 N 張 — LINE 一組需 8 / 16 / 24 / 32 / 40 張（不符以 warning 色提示）
+  - 「產生貼圖包」按鈕 / `.progress` / `.message`
+  - 右：結果縮圖牆（棋盤格底）+ main / tab 預覽 + 「下載 ZIP」+ 空狀態
+- 流程 per sticker：來源圖（或切片區域）→（可選 `ChromaKey.process`）→ 掃 alpha 取內容 bbox 並裁掉透明邊（全不透明則整張）→ contain 縮放（縮太多時分段 halving）置中於 偶數尺寸、含留白的透明 canvas → `toBlob('image/png')`；> 1 MB 時提示（不自動最佳化）
+- `main.png`：第 1 張的裁切內容 fit 進 240×240 透明 canvas；`tab.png`：同樣 fit 進 96×74
+- ZIP：`main.png` + `01.png`…`NN.png`（補零兩位）+ `tab.png`（LINE 是逐檔上傳、不吃 ZIP，但 ZIP 是給使用者的方便包）
+- `main.py` 加 `GET /line-sticker`；`static/index.html` 加 `.tool-card`；`README.md` 補；首頁 meta description 補
+
+**成功標準**：丟 8 張綠幕 PNG → 勾去綠幕、留白 10、自動尺寸 → 產出 8 張透明 PNG（長寬偶數、≤ 370×320、四周約 10px 透明邊）+ `main.png` 240×240 + `tab.png` 96×74，ZIP 內檔名 `main.png 01.png … 08.png tab.png`；拼版大圖 4×2 → 切成 8 張同上；張數非 8/16/24/32/40 時有提示；亮 / 暗模式正常；無 JS error
+
+**測試**：8 張個別 PNG（含透明邊多的）、一張 4×2 拼版大圖、JPEG（不透明、不去背）、極端長寬比的圖（確認 fit 不爆框）、產 ZIP 開來檢查尺寸 / 命名 / 透明；桌機 + 手機寬度
+
+**狀態**：完成（無頭瀏覽器實測：多張模式 8 張綠幕圖（含極端長寬比）→ 去綠幕 → 8 張透明 PNG，長寬皆偶數、≤ 370×320、角落 alpha=0、main.png 240×240、tab.png 96×74、命名 01.png…、ZIP 啟用、組數判斷正確；拼版大圖 4×2 模式同樣 OK。修掉一個 async 加檔的 bug：change/drop handler 在 addMultiFiles(async) 還沒讀完 FileList 前就 input.value='' / DataTransfer 失效 → 只進得了第一張；改成先 Array 快照再清。動態 APNG 為階段 9b）
+
+## 階段 9b：LINE 貼圖打包工具 — 動態（APNG）
+**目標**：同工具加「動態貼圖」模式 —— 上傳一串 frame（多張、依序）或一張 frame 拼版大圖（會切）或現成 APNG（會解）→ 組成符合 LINE 規格的 APNG（≤ 320×270 偶數、5–20 幀、1–4 秒、迴圈、≤ 300 KB）+ `main.png`(240×240，靜態) + `tab.png`
+- 用 [`UPNG.js`](https://github.com/photopea/UPNG.js)（MIT，CDN）編碼 APNG；解現成 APNG 可用 `apng-js` 或 UPNG 解碼
+- UI 加一個頂層 `.segmented`：靜態貼圖 / 動態貼圖；動態模式露出 幀來源 / 幀率（或每幀毫秒）/ 迴圈次數 等控制；每幀也走「去背 → 裁 → fit 進 320×270」
+- 邊界：幀數 5–20、總時長 1–4 秒、檔案 ≤ 300 KB（超過提示降幀 / 降色 / 縮尺寸）
+
+**狀態**：完成（UPNG.js + pako CDN；同工具加「貼圖類型」靜態 / 動態切換；動態：每幀去背 → 算各幀內容 bbox 的聯集 → 全幀裁同一框、同一比例縮放 → 同尺寸；UPNG.encode 先無損、>300KB 逐步降色 256→128→64；輸入兩種：多張影格（每 N 張一組）/ 影格拼版（欄=影格、列=貼圖）。無頭瀏覽器實測：多張 12 影格/每 6 → 2 張 APNG（UPNG.decode 驗證 6 幀、320×230、偶數、≤300KB）；拼版 6×3 → 3 張 APNG（驗證 6 幀、320×208）；main.png 240×240、tab.png 96×74 皆正確）
+
+## 追加決策紀錄
+| Date | Decision | Rationale |
+|------|----------|-----------|
+| 2026-05-11 | LINE 貼圖做成獨立工具 `/line-sticker`，不是切圖工具的一個模式 | 切片只是其中一步；LINE 還要 fit 進固定框、偶數化、補留白、生 main/tab、`01.png` 命名、整包 —— 專屬邏輯太多，塞進切圖會變肥；但內部重用切片 + `chroma-key.js` + 縮放積木 |
+| 2026-05-11 | 先做靜態（9a），動態 APNG（9b）接著做；AI 生成（上傳照片選風格自動生圖）獨立成第三層、暫不做 | 漸進式：靜態涵蓋最常見情境且零外部依賴；APNG 加 UPNG.js；AI 那層要串 gpt-image / Gemini「nano-banana」之類，涉及 API key（localStorage）/ CORS / 一致性（InstantID 類）/ 成本，規模與調性都不同，等前面上了再規劃 |
+| 2026-05-11 | 每張貼圖先「自動裁掉透明邊」再 fit + 補留白 | 不裁的話內容周圍的透明 padding 會害 fit 把角色縮小；全不透明（如 JPEG）時 bbox = 整張，等於沒裁，無害 |
+| 2026-05-11 | 自動尺寸＝輸出 canvas 貼合內容（長 ≤ 370、高 ≤ 320、偶數），不是一律 370×320 | LINE 只要求「不超過」且不喜歡大片空白；貼合內容 + 統一留白是常見做法。另給「正方形 320×320」選項給想要整齊一致的人 |
