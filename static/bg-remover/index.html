@@ -138,8 +138,9 @@
           <div class="section">
             <div class="section__label"><span class="section__num">03</span> 關於 AI 去背</div>
             <p class="ai-note">
-              用瀏覽器內建的辨識模型把主體從<b>任意背景</b>切出來，適合人像、商品照等沒有綠幕的圖。<br>
-              首次使用會下載辨識模型（<b>數十 MB</b>，之後瀏覽器會快取）；整個過程都在你的電腦上跑，<b>圖片不會上傳</b>。
+              用瀏覽器內建的辨識模型把主體從<b>任意背景</b>切出來，適合人像、商品照等沒有綠幕的圖；去完還會自動清掉背景的孤立碎屑。<br>
+              首次使用會下載辨識模型（<b>約 80 MB</b>，一次性，之後瀏覽器會快取）；整個過程都在你的電腦上跑，<b>圖片不會上傳</b>。<br>
+              <span style="color:var(--text-dim)">複雜場景（如深色頭髮配深色雜亂背景）效果有限，必要時可換用上面的「綠幕去背」或事後微調。</span>
             </p>
           </div>
         </div>
@@ -358,6 +359,48 @@
         canvas.toBlob(function (b) { b ? resolve(b) : reject(new Error("產生圖片失敗")); }, mime);
       });
     }
+    function blobToCanvas(blob) {
+      return new Promise(function (resolve, reject) {
+        var url = URL.createObjectURL(blob), img = new Image();
+        img.onload = function () {
+          var c = document.createElement("canvas");
+          c.width = img.naturalWidth; c.height = img.naturalHeight;
+          c.getContext("2d", { willReadFrequently: true }).drawImage(img, 0, 0);
+          URL.revokeObjectURL(url); resolve(c);
+        };
+        img.onerror = function () { URL.revokeObjectURL(url); reject(new Error("讀取去背結果失敗")); };
+        img.src = url;
+      });
+    }
+    // 清掉 AI mask 上的孤立小雜點：把 alpha mask 做 4-連通元件，
+    // 只保留最大塊 + 其他面積 ≥ 0.3% 影像的塊，其餘 alpha 歸零（消除深色背景留下的「碎屑」）
+    function cleanAlphaMask(imageData) {
+      var d = imageData.data, w = imageData.width, h = imageData.height, n = w * h;
+      var FG = 16;
+      var label = new Int32Array(n);            // 0 = 背景/未定, >0 = 元件編號
+      for (var i = 0; i < n; i++) label[i] = (d[i * 4 + 3] < FG) ? 0 : -1;   // -1 = 前景待標
+      var stack = new Int32Array(n), comps = [0], cur = 0;
+      for (var p = 0; p < n; p++) {
+        if (label[p] !== -1) continue;
+        cur++; var area = 0, sp = 0; stack[sp++] = p; label[p] = cur;
+        while (sp > 0) {
+          var q = stack[--sp]; area++;
+          var x = q % w, y = (q / w) | 0;
+          if (x > 0 && label[q - 1] === -1) { label[q - 1] = cur; stack[sp++] = q - 1; }
+          if (x < w - 1 && label[q + 1] === -1) { label[q + 1] = cur; stack[sp++] = q + 1; }
+          if (y > 0 && label[q - w] === -1) { label[q - w] = cur; stack[sp++] = q - w; }
+          if (y < h - 1 && label[q + w] === -1) { label[q + w] = cur; stack[sp++] = q + w; }
+        }
+        comps.push(area);
+      }
+      if (cur === 0) return imageData;
+      var maxK = 1; for (var k = 2; k <= cur; k++) if (comps[k] > comps[maxK]) maxK = k;
+      var minArea = Math.max(1, Math.floor(n * 0.003));
+      var keep = new Uint8Array(cur + 1);
+      for (var k2 = 1; k2 <= cur; k2++) keep[k2] = (k2 === maxK || comps[k2] >= minArea) ? 1 : 0;
+      for (var j = 0; j < n; j++) { var L = label[j]; if (L > 0 && !keep[L]) d[j * 4 + 3] = 0; }
+      return imageData;
+    }
 
     async function runAi() {
       if (!state.removeBackground) {
@@ -372,7 +415,7 @@
       }
       showProgress("AI 去背");
       var cfg = {
-        model: "isnet_quint8",
+        model: "isnet_fp16",                    // 高品質模型（複雜背景明顯比 quint8 乾淨）
         output: { format: "image/png" },
         progress: function (key, current, total) {
           var pct = total ? Math.round(current / total * 100) : 0;
@@ -380,7 +423,19 @@
           setProgress(pct, what + " " + pct + "%");
         }
       };
-      var blob = await state.removeBackground(state.file, cfg);
+      var raw = await state.removeBackground(state.file, cfg);
+      setProgress(96, "整理結果");
+      var blob = raw;
+      try {
+        var cv = await blobToCanvas(raw), W = cv.width, H = cv.height;
+        if (W * H <= 16e6) {                    // 太大就跳過清理，避免吃太多記憶體
+          var ctx = cv.getContext("2d", { willReadFrequently: true });
+          var imgData = ctx.getImageData(0, 0, W, H);
+          cleanAlphaMask(imgData);
+          ctx.putImageData(imgData, 0, 0);
+          blob = await canvasToBlob(cv, "image/png");
+        }
+      } catch (e) { blob = raw; }               // 清理失敗就用原始結果
       setProgress(100, "完成");
       if (state.aiURL) URL.revokeObjectURL(state.aiURL);
       state.aiBlob = blob; state.aiURL = URL.createObjectURL(blob);
