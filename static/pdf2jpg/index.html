@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PDF to JPG · HD 的工具箱</title>
+  <meta name="description" content="把 PDF 每一頁轉成 JPG，可調解析度與品質，打包成 ZIP 下載。">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="/static/shared/app.css">
+  <script src="/static/shared/theme.js"></script>
+</head>
+<body>
+
+  <header class="app-header">
+    <div class="app-header__row">
+      <a href="/" class="brand">HD 的工具箱</a>
+      <span class="crumb-sep">/</span>
+      <span class="crumb-cur">PDF to JPG</span>
+      <span class="app-header__spacer"></span>
+      <a href="/" class="btn btn--ghost" style="padding:6px 10px;font-size:13px">
+        <svg class="icon icon--sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+        回工具箱
+      </a>
+      <button type="button" class="theme-toggle" id="themeToggle" aria-label="切換亮 / 暗模式" title="切換亮 / 暗模式">
+        <svg class="icon icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
+        <svg class="icon icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <main class="app-main app-main--narrow">
+    <div class="tool-head">
+      <h1>PDF to JPG</h1>
+      <p>把 PDF 每一頁轉成 JPG，打包成 ZIP 下載。檔案上傳到伺服器轉換後立即丟棄，不會留存。</p>
+    </div>
+
+    <div class="card">
+      <div class="section">
+        <div class="section__label"><span class="section__num">01</span> 上傳 PDF</div>
+        <div class="dropzone" id="dropzone">
+          <input type="file" id="fileInput" accept=".pdf" hidden>
+          <svg class="dropzone__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M17 8l-5-5-5 5M12 3v12"/></svg>
+          <div class="dropzone__title">拖曳 PDF 到這裡</div>
+          <div class="dropzone__hint">或點擊選擇檔案</div>
+          <span class="dropzone__file" id="fileName"></span>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section__label"><span class="section__num">02</span> 解析度 (DPI)</div>
+        <div class="range-field">
+          <input type="range" id="dpiSlider" min="72" max="600" value="150">
+          <span class="range-field__val" id="dpiValue">150</span>
+        </div>
+        <div class="range-hints"><span>72 快速</span><span>300 列印</span><span>600 高畫質</span></div>
+      </div>
+
+      <div class="section">
+        <div class="section__label"><span class="section__num">03</span> JPG 品質</div>
+        <div class="range-field">
+          <input type="range" id="qualitySlider" min="1" max="100" value="85">
+          <span class="range-field__val" id="qualityValue">85%</span>
+        </div>
+        <div class="range-hints"><span>最小檔案</span><span>建議值</span><span>最高品質</span></div>
+      </div>
+
+      <button type="button" class="btn btn--primary btn--block mt-6" id="convertBtn" disabled>選擇檔案後開始轉換</button>
+
+      <div class="progress" id="progress">
+        <div class="progress__header">
+          <span class="progress__label">轉換中</span>
+          <span class="progress__status" id="progressStatus"></span>
+        </div>
+        <div class="progress__track"><div class="progress__bar" id="progressBar"></div></div>
+      </div>
+
+      <div class="message message--error mt-4" id="errorMsg">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M15 9l-6 6M9 9l6 6"/></svg>
+        <span id="errorText"></span>
+      </div>
+
+      <div class="message message--success mt-4" id="successMsg">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><path d="M22 4L12 14.01l-3-3"/></svg>
+        <span>轉換完成，ZIP 已開始下載。</span>
+      </div>
+    </div>
+  </main>
+
+  <footer class="app-footer">
+    <p>HD 的工具箱 · made by <a href="https://github.com/" rel="noopener">Jackie Yeh</a></p>
+  </footer>
+
+  <script>
+    (function () {
+      var dropzone = document.getElementById('dropzone');
+      var fileInput = document.getElementById('fileInput');
+      var fileName = document.getElementById('fileName');
+      var dpiSlider = document.getElementById('dpiSlider');
+      var dpiValue = document.getElementById('dpiValue');
+      var qualitySlider = document.getElementById('qualitySlider');
+      var qualityValue = document.getElementById('qualityValue');
+      var convertBtn = document.getElementById('convertBtn');
+      var progress = document.getElementById('progress');
+      var progressBar = document.getElementById('progressBar');
+      var progressStatus = document.getElementById('progressStatus');
+      var errorMsg = document.getElementById('errorMsg');
+      var errorText = document.getElementById('errorText');
+      var successMsg = document.getElementById('successMsg');
+
+      var selectedFile = null;
+
+      function showError(msg) {
+        errorText.textContent = msg;
+        errorMsg.classList.add('is-shown');
+        successMsg.classList.remove('is-shown');
+      }
+      function hideMessages() {
+        errorMsg.classList.remove('is-shown');
+        successMsg.classList.remove('is-shown');
+      }
+
+      function handleFile(file) {
+        if (!file || !file.name.toLowerCase().endsWith('.pdf')) {
+          showError('請選擇 PDF 檔案。');
+          return;
+        }
+        selectedFile = file;
+        fileName.textContent = file.name;
+        fileName.classList.add('is-shown');
+        convertBtn.disabled = false;
+        convertBtn.textContent = '轉換並下載';
+        hideMessages();
+      }
+
+      dropzone.addEventListener('click', function () { fileInput.click(); });
+      dropzone.addEventListener('dragover', function (e) { e.preventDefault(); dropzone.classList.add('is-dragover'); });
+      dropzone.addEventListener('dragleave', function (e) { e.preventDefault(); dropzone.classList.remove('is-dragover'); });
+      dropzone.addEventListener('drop', function (e) {
+        e.preventDefault();
+        dropzone.classList.remove('is-dragover');
+        if (e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]);
+      });
+      fileInput.addEventListener('change', function (e) {
+        if (e.target.files.length) handleFile(e.target.files[0]);
+      });
+
+      dpiSlider.addEventListener('input', function () { dpiValue.textContent = dpiSlider.value; });
+      qualitySlider.addEventListener('input', function () { qualityValue.textContent = qualitySlider.value + '%'; });
+
+      convertBtn.addEventListener('click', async function () {
+        if (!selectedFile) return;
+        hideMessages();
+        progress.classList.add('is-shown');
+        progressBar.style.width = '0%';
+        progressStatus.textContent = '準備中…';
+        convertBtn.disabled = true;
+
+        var form = new FormData();
+        form.append('file', selectedFile);
+        form.append('dpi', dpiSlider.value);
+        form.append('quality', qualitySlider.value);
+
+        try {
+          progressBar.style.width = '30%';
+          progressStatus.textContent = '上傳中…';
+          var res = await fetch('/api/pdf2jpg/convert', { method: 'POST', body: form });
+
+          progressBar.style.width = '70%';
+          progressStatus.textContent = '處理中…';
+          if (!res.ok) {
+            var err;
+            try { err = await res.json(); } catch (e) { err = {}; }
+            throw new Error(err.detail || ('轉換失敗（HTTP ' + res.status + '）'));
+          }
+
+          progressBar.style.width = '92%';
+          progressStatus.textContent = '下載中…';
+          var blob = await res.blob();
+          var url = URL.createObjectURL(blob);
+          var a = document.createElement('a');
+          a.href = url;
+          a.download = selectedFile.name.replace(/\.pdf$/i, '') + '_images.zip';
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+
+          progressBar.style.width = '100%';
+          progressStatus.textContent = '完成';
+          setTimeout(function () {
+            progress.classList.remove('is-shown');
+            successMsg.classList.add('is-shown');
+          }, 450);
+        } catch (e) {
+          showError(e.message || '轉換失敗。');
+          progress.classList.remove('is-shown');
+        } finally {
+          convertBtn.disabled = false;
+        }
+      });
+    })();
+  </script>
+</body>
+</html>
