@@ -377,3 +377,34 @@ AI 自動去背已「堪用」（imgly fp16 + 碎屑清理）；再往上：① 
 | 2026-05-11 | 結構化表情清單（預設 8 條可增刪改）而非自由 prompt；標題傾向 Canvas 疊不讓模型畫 | 使用者選；可預期、好控制張數、好重生單張；模型畫文字易糊 / 易錯字 |
 | 2026-05-11 | 透明背景預設走「prompt 要求純綠底 + chroma-key 去綠」而非依賴模型透明輸出 | 跨兩家最穩；模型透明輸出品質 / 支援度不一（OpenAI 的 `background:transparent` 還行，Google 較看運氣）；另留「模型透明」「不處理」選項 |
 | 2026-05-11 | 參考圖上傳後縮到 ≤1024px 再每次帶給 proxy | 一組 N 張 = N 次上傳，原圖太大會浪費流量；API 對 ~1024px 輸入也夠用 |
+
+---
+
+# 追加：站台層級設定（API keys）（2026-05-12）
+
+把 AI key 的輸入從 `/sticker-ai` 那頁搬成「整個工具站的設定」—— 每頁 header 一顆齒輪、開設定面板統一管；用「清單」渲染，未來新工具要 key 加一行就好。
+
+## 階段 12：共用設定 `static/shared/settings.js`
+**目標**：站台層級的設定面板（目前放各家 API key），每頁可開、可擴充
+- `static/shared/settings.js`（每頁載，跟 `theme.js` 同模式）：
+  - `KEY_DEFS` 清單：`[{id:'openai', label, placeholder, url}, {id:'google', ...}]` —— 加一家就在這加一條
+  - `window.Settings`：`getKey(id)` / `setKey(id, v)` / `get(name, def)` / `set(name, v)`（存 `localStorage` 前綴 `hd-toolkit:`，key 存 `hd-toolkit:apikey:<id>`）/ `onChange(fn)` / `openPanel()`
+  - migration：把舊的 `sticker-ai-openai-key` / `sticker-ai-google-key` 搬進新 namespace
+  - `DOMContentLoaded` → 在 `.app-header` 的 `.theme-toggle` 前注入「設定」齒輪 `.icon-btn`（SVG 用 `createElementNS` 建，不用 innerHTML）；建設定面板（overlay + modal，append 到 body，預設隱藏）：標題 + 每個 KEY_DEF 一列（label + 取得 key 連結 + `type=password` 的 `.text-field` + 「清除」）+ 說明 + 「關閉」；輸入即存（`input` → `setKey` → 觸發 `onChange`）；Esc / 點 backdrop / ✕ / 關閉 都能關
+- `static/shared/app.css`：加 `.icon-btn`（header 圖示按鈕，跟 `.theme-toggle` 同外觀）+ `.settings-overlay` / `.settings-modal` / `.settings-row` / `.settings-foot` 等 modal 樣式
+- 6 個 HTML（index / pdf2jpg / image-slicer / bg-remover / image-compressor / sticker-ai）`<head>` 加 `<script src="/static/shared/settings.js"></script>`（在 theme.js 後）
+- `static/sticker-ai/index.html`：拿掉自己的 OpenAI / Google key 欄位與相關 localStorage 邏輯；改成顯示「目前選的 provider — API key 已設定 ✓ / 未設定 ⚠」+ 「開啟設定」按鈕（`Settings.openPanel()`）；`currentKey()` → `Settings.getKey(state.provider)`；`Settings.onChange` → 重新 `syncControls()` + 更新狀態文字；模型選單 / 自訂 ID / 品質留在頁上（那是工具專屬，不是站台設定）
+- README 補：站台設定面板 + 共用 `settings.js` + sticker-ai 的 key 改在站台設定
+
+**成功標準**：任一頁右上出現齒輪 → 點開設定面板有 OpenAI / Google 兩個 key 欄 → 填進去存進 `localStorage`（`hd-toolkit:apikey:*`）→ 到 `/sticker-ai` 顯示「已設定 ✓」、按鈕可按；舊的 `sticker-ai-*-key` 自動遷移；Esc / 點外面能關面板；亮 / 暗模式正常；無 JS error
+
+**測試**：開任一頁 → 齒輪 → 面板開關（Esc / backdrop）→ 填 key → reload 後還在 → `/sticker-ai` 讀到 → 在面板清除 → sticker-ai 狀態變「未設定」、按鈕禁用；先在舊 `localStorage` 塞 `sticker-ai-openai-key` 再 reload → 出現在面板裡（migration）
+
+**狀態**：完成。新增 `static/shared/settings.js`（`window.Settings`：`getKey/setKey/get/set/onChange/openPanel`，存 `hd-toolkit:` 前綴、key 在 `hd-toolkit:apikey:<id>`；`KEY_DEFS` 清單 [openai, google]；migration 舊 `sticker-ai-*-key`；`DOMContentLoaded` 在 `.theme-toggle` 前注入 `.icon-btn` 齒輪 + 建 overlay/modal，輸入即存、Esc/backdrop/✕/關閉 都能關，SVG 用 `createElementNS`）；`app.css` 加 `.icon-btn` + `.settings-overlay/.settings-modal/.settings-row/.settings-foot`；6 個 HTML `<head>` 加 `<script src="/static/shared/settings.js">`；`/sticker-ai` 拿掉自家 key 欄位與 localStorage 邏輯，改顯示「<provider> API key：已設定 ✓ / 未設定」+「到設定填」按鈕（`Settings.openPanel()`），`currentKey()` → `Settings.getKey(provider)`，`Settings.onChange` → `syncControls()`（含 `updateKeyStatus`），模型/品質留在頁上；README 補。無頭瀏覽器實測：齒輪出現在非 AI 頁（pdf2jpg / image-compressor）的 header 且在 theme 鈕前；開面板 → 2 個 key 列、label 正確；面板填 OpenAI key → `localStorage['hd-toolkit:apikey:openai']` 寫入、`Settings.getKey` 讀到、`Settings.onChange` 觸發 sticker-ai 重 sync（狀態「已設定 ✓」、按鈕可按）；清除按鈕 → 移除；Esc 關面板；migration：reload 前塞 `sticker-ai-google-key` → reload 後 `hd-toolkit:apikey:google` 有值；`Settings.set/get('foo')` 一般用途也通；無 JS error
+
+## 追加決策紀錄
+| Date | Decision | Rationale |
+|------|----------|-----------|
+| 2026-05-12 | AI key 從工具頁搬成「站台設定」：共用 `settings.js` + header 齒輪 + modal，key 用 `KEY_DEFS` 清單渲染 | 使用者要求；未來其他工具也會需要 key，用清單擴充比每個工具各做一套輸入界面好；跟 `theme.js` 同一個「每頁載的共用小模組」模式 |
+| 2026-05-12 | 齒輪由 `settings.js` 注入到 header（不改各頁 HTML 的 header），SVG 用 `createElementNS` 而非 innerHTML | DRY（圖示一份）；innerHTML 被 pre-write hook 擋 |
+| 2026-05-12 | sticker-ai 的 key 欄位拿掉、只留狀態 + 「開啟設定」連結；模型 / 品質留在頁上 | key 是站台層級、模型是工具層級；避免兩處重複輸入造成混淆 |

@@ -9,6 +9,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="/static/shared/app.css">
   <script src="/static/shared/theme.js"></script>
+  <script src="/static/shared/settings.js"></script>
   <style>
     /* AI 貼圖生成工具專屬樣式（共用元件在 app.css） */
     .tool-layout__preview { align-items: stretch; justify-content: flex-start; overflow-y: auto; }
@@ -158,11 +159,6 @@
               </div>
             </div>
             <input type="text" class="text-field mt-4" id="openaiModelCustom" autocomplete="off" placeholder="自訂模型 ID" hidden>
-            <span class="field-label mt-4">OpenAI API key</span>
-            <div class="row-2">
-              <div style="flex:3 1 200px"><input type="password" class="text-field" id="openaiKey" autocomplete="off" placeholder="sk-..."></div>
-              <div style="flex:0 0 auto"><button type="button" class="btn btn--ghost" id="openaiKeyClear" style="padding:9px 12px;font-size:13px">清除</button></div>
-            </div>
           </div>
 
           <div class="provider-pane is-active mt-4" id="paneGoogle">
@@ -174,14 +170,11 @@
               <option value="__custom__">自訂…</option>
             </select>
             <input type="text" class="text-field mt-4" id="googleModelCustom" autocomplete="off" placeholder="自訂模型 ID" hidden>
-            <span class="field-label mt-4">Google AI Studio API key</span>
-            <div class="row-2">
-              <div style="flex:3 1 200px"><input type="password" class="text-field" id="googleKey" autocomplete="off" placeholder="AIza..."></div>
-              <div style="flex:0 0 auto"><button type="button" class="btn btn--ghost" id="googleKeyClear" style="padding:9px 12px;font-size:13px">清除</button></div>
-            </div>
           </div>
 
-          <p class="hint-line" style="margin-top:var(--space-3)">API key 只存在你的瀏覽器（<code style="font-family:var(--font-mono)">localStorage</code>），請求時會經本站的薄 proxy 轉給 AI 服務、用完即丟、不留存。生圖要錢、用你自己的 key —— 一組 8~24 張視模型 / 品質約 US$0.3~5。</p>
+          <p class="hint-line" id="keyStatus" style="margin-top:var(--space-3)"></p>
+          <button type="button" class="btn btn--ghost" id="openSettingsBtn" style="margin-top:var(--space-2);padding:6px 12px;font-size:13px">到「設定」填 / 改 API key</button>
+          <p class="hint-line" style="margin-top:var(--space-2)">API key 在站台「設定」面板統一管（右上齒輪），只存在你的瀏覽器；請求時經本站薄 proxy 轉給 AI 服務、用完即丟、不留存。生圖要錢、用你自己的 key —— 一組 8~24 張視模型 / 品質約 US$0.3~5。</p>
         </div>
 
         <div class="section">
@@ -262,7 +255,6 @@
     var ENDPOINT = "/api/sticker-ai/generate";
     var ST_MAX_W = 370, ST_MAX_H = 320, SQUARE = 320, MAIN = 240, TAB_W = 96, TAB_H = 74;
     var ALLOWED = [8, 16, 24], MAX_ENTRIES = 40, ALPHA_T = 12, REF_MAX = 1024;
-    var KEYS_LS = { openai: "sticker-ai-openai-key", google: "sticker-ai-google-key" };
     var STYLE_PROMPT = {
       sticker: "Die-cut sticker style: clean thick white outline around the subject, flat bright colors, simple cel shading, bold and cute.",
       handdraw: "Hand-drawn doodle style: loose ink linework, soft hand-painted fills, warm and friendly.",
@@ -290,8 +282,9 @@
       entryList: $("entryList"), addEntryBtn: $("addEntryBtn"), countStatus: $("countStatus"),
       titleSeg: $("titleSeg"),
       providerSeg: $("providerSeg"), paneOpenai: $("paneOpenai"), paneGoogle: $("paneGoogle"),
-      openaiModel: $("openaiModel"), openaiModelCustom: $("openaiModelCustom"), openaiQuality: $("openaiQuality"), openaiKey: $("openaiKey"), openaiKeyClear: $("openaiKeyClear"),
-      googleModel: $("googleModel"), googleModelCustom: $("googleModelCustom"), googleKey: $("googleKey"), googleKeyClear: $("googleKeyClear"),
+      openaiModel: $("openaiModel"), openaiModelCustom: $("openaiModelCustom"), openaiQuality: $("openaiQuality"),
+      googleModel: $("googleModel"), googleModelCustom: $("googleModelCustom"),
+      keyStatus: $("keyStatus"), openSettingsBtn: $("openSettingsBtn"),
       bgSeg: $("bgSeg"), chromaRow: $("chromaRow"), chromaSlider: $("chromaSlider"), chromaVal: $("chromaVal"),
       fitSeg: $("fitSeg"), padSlider: $("padSlider"), padVal: $("padVal"),
       goBtn: $("goBtn"), progress: $("progress"), progressBar: $("progressBar"), progressStatus: $("progressStatus"),
@@ -324,8 +317,6 @@
     function imgToCanvas(img) { var c = newCanvas(img.naturalWidth, img.naturalHeight); c.getContext("2d", { willReadFrequently: true }).drawImage(img, 0, 0); return c; }
     function cropToCanvas(src, sx, sy, sw, sh) { var c = newCanvas(sw, sh); c.getContext("2d").drawImage(src, sx, sy, sw, sh, 0, 0, sw, sh); return c; }
     function triggerDownload(blob, name) { var u = URL.createObjectURL(blob), a = document.createElement("a"); a.href = u; a.download = name; document.body.appendChild(a); a.click(); document.body.removeChild(a); setTimeout(function () { URL.revokeObjectURL(u); }, 1000); }
-    function lsGet(k) { try { return localStorage.getItem(k) || ""; } catch (e) { return ""; } }
-    function lsSet(k, v) { try { v ? localStorage.setItem(k, v) : localStorage.removeItem(k); } catch (e) {} }
 
     function contentBBox(canvas) {
       var w = canvas.width, h = canvas.height, d = canvas.getContext("2d", { willReadFrequently: true }).getImageData(0, 0, w, h).data;
@@ -416,7 +407,12 @@
       if (state.provider === "openai") { var v = els.openaiModel.value; return v === "__custom__" ? (els.openaiModelCustom.value.trim() || "gpt-image-2") : v; }
       var g = els.googleModel.value; return g === "__custom__" ? (els.googleModelCustom.value.trim() || "gemini-3-pro-image-preview") : g;
     }
-    function currentKey() { return (state.provider === "openai" ? els.openaiKey.value : els.googleKey.value).trim(); }
+    function currentKey() { return (window.Settings ? Settings.getKey(state.provider) : ""); }
+    function updateKeyStatus() {
+      var has = !!currentKey();
+      els.keyStatus.textContent = (state.provider === "openai" ? "OpenAI" : "Google") + " API key：" + (has ? "已設定 ✓" : "未設定 — 用下面的按鈕到「設定」填");
+      els.keyStatus.style.color = has ? "var(--text-muted)" : "var(--warning)";
+    }
 
     // ---------- prompt ----------
     function buildPrompt(entry) {
@@ -572,9 +568,10 @@
       els.googleModelCustom.hidden = els.googleModel.value !== "__custom__";
     }
     function syncControls() {
+      updateKeyStatus();
       var n = state.entries.length, hasKey = !!currentKey();
       els.goBtn.disabled = state.busy || !hasKey || n === 0;
-      els.goBtn.textContent = state.busy ? "生成中…" : !hasKey ? ("先填 " + (state.provider === "openai" ? "OpenAI" : "Google") + " API key") : ("開始生成（" + n + " 張）");
+      els.goBtn.textContent = state.busy ? "生成中…" : !hasKey ? ("先到「設定」填 " + (state.provider === "openai" ? "OpenAI" : "Google") + " API key") : ("開始生成（" + n + " 張）");
       els.zipBtn.disabled = state.busy || !state.results || state.results.items.filter(function (s) { return s.blob; }).length === 0;
       els.chromaRow.style.opacity = state.bgMode === "chroma" ? "1" : "0.5";
       els.chromaRow.style.pointerEvents = state.bgMode === "chroma" ? "auto" : "none";
@@ -606,17 +603,13 @@
     els.googleModel.addEventListener("change", function () { syncModelCustom(); refreshPlanNote(); });
     els.openaiModelCustom.addEventListener("input", refreshPlanNote);
     els.googleModelCustom.addEventListener("input", refreshPlanNote);
-    els.openaiKey.addEventListener("input", function () { lsSet(KEYS_LS.openai, els.openaiKey.value.trim()); syncControls(); });
-    els.googleKey.addEventListener("input", function () { lsSet(KEYS_LS.google, els.googleKey.value.trim()); syncControls(); });
-    els.openaiKeyClear.addEventListener("click", function () { els.openaiKey.value = ""; lsSet(KEYS_LS.openai, ""); syncControls(); });
-    els.googleKeyClear.addEventListener("click", function () { els.googleKey.value = ""; lsSet(KEYS_LS.google, ""); syncControls(); });
+    els.openSettingsBtn.addEventListener("click", function () { if (window.Settings) Settings.openPanel(); });
+    if (window.Settings) Settings.onChange(function () { syncControls(); });
 
     els.goBtn.addEventListener("click", generateAll);
     els.zipBtn.addEventListener("click", downloadZip);
 
     // ---------- init ----------
-    els.openaiKey.value = lsGet(KEYS_LS.openai);
-    els.googleKey.value = lsGet(KEYS_LS.google);
     renderEntries(); updateCountStatus(); syncProviderPane(); syncModelCustom(); refreshPlanNote(); syncControls();
   })();
   </script>

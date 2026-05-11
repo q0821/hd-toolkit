@@ -180,7 +180,8 @@ img { max-width: 100%; display: block; }
 .crumb-cur { color: var(--text-muted); font-size: 14px; }
 .app-header__spacer { flex: 1; }
 
-.theme-toggle {
+.theme-toggle,
+.icon-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -193,7 +194,8 @@ img { max-width: 100%; display: block; }
   cursor: pointer;
   transition: background-color 0.15s, color 0.15s, border-color 0.15s;
 }
-.theme-toggle:hover { background: var(--surface-2); color: var(--text); }
+.theme-toggle:hover,
+.icon-btn:hover { background: var(--surface-2); color: var(--text); }
 .theme-toggle .icon-moon { display: none; }
 .theme-toggle .icon-sun { display: block; }
 html[data-theme="dark"] .theme-toggle .icon-sun { display: none; }
@@ -633,6 +635,64 @@ html[data-theme="dark"] .theme-toggle .icon-moon { display: block; }
 .stack-4 > * + * { margin-top: var(--space-4); }
 .mt-4 { margin-top: var(--space-4); }
 .mt-6 { margin-top: var(--space-6); }
+
+/* ---------- Settings modal ---------- */
+.settings-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: none;
+  align-items: flex-start;
+  justify-content: center;
+  padding: var(--space-16) var(--space-4) var(--space-8);
+  background: rgba(0, 0, 0, 0.45);
+  -webkit-backdrop-filter: blur(2px);
+  backdrop-filter: blur(2px);
+  overflow-y: auto;
+}
+.settings-overlay.is-open { display: flex; }
+.settings-modal {
+  width: 100%;
+  max-width: 460px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
+  padding: var(--space-8);
+  animation: settings-in 0.2s var(--ease-enter);
+}
+@keyframes settings-in {
+  from { opacity: 0; transform: translateY(-8px) scale(0.98); }
+  to { opacity: 1; transform: none; }
+}
+.settings-modal__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-4);
+}
+.settings-modal__head h2 { font-size: 20px; }
+.settings-row { margin-top: var(--space-6); }
+.settings-row__label {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-2);
+}
+.settings-row__label .field-label { margin: 0; }
+.settings-row__label a { font-size: 12px; color: var(--text-muted); }
+.settings-row__label a:hover { color: var(--accent); }
+.settings-note {
+  margin-top: var(--space-4);
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--text-dim);
+}
+.settings-foot {
+  display: flex;
+  margin-top: var(--space-8);
+}
 
 /* ---------- Reduced motion ---------- */
 @media (prefers-reduced-motion: reduce) {
