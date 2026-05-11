@@ -124,11 +124,12 @@
 
         <div class="section">
           <div class="section__label"><span class="section__num">04</span> 標題文字</div>
-          <div class="segmented" id="titleSeg" role="group" aria-label="標題文字">
-            <button type="button" class="segmented__btn" data-title="overlay" aria-pressed="true">疊在貼圖上</button>
-            <button type="button" class="segmented__btn" data-title="none" aria-pressed="false">不疊文字</button>
+          <div class="segmented segmented--wrap" id="titleSeg" role="group" aria-label="標題文字">
+            <button type="button" class="segmented__btn" data-title="ai" aria-pressed="true">讓 AI 畫</button>
+            <button type="button" class="segmented__btn" data-title="overlay" aria-pressed="false">疊在底部</button>
+            <button type="button" class="segmented__btn" data-title="none" aria-pressed="false">不要文字</button>
           </div>
-          <p class="hint-line">「疊在貼圖上」會由本工具用 Canvas 在貼圖底部寫上每條的「標題」（白邊黑字），比讓 AI 畫文字穩。</p>
+          <p class="hint-line">「讓 AI 畫」= 請 AI 把每條的「標題」融進畫面、自己決定位置與風格（像對話氣泡或大標）；「疊在底部」= 本工具用 Canvas 在貼圖底部寫上（白邊黑字、固定位置、最穩）；「不要文字」= 整張不要任何字。</p>
         </div>
 
         <div class="section">
@@ -144,8 +145,9 @@
                 <span class="field-label">模型</span>
                 <select class="text-field" id="openaiModel">
                   <option value="gpt-image-2" selected>GPT Image 2（最新）</option>
+                  <option value="gpt-image-2-2026-04-21">gpt-image-2-2026-04-21（快照）</option>
                   <option value="gpt-image-1.5">gpt-image-1.5</option>
-                  <option value="gpt-image-1">gpt-image-1</option>
+                  <option value="gpt-image-1">gpt-image-1（最穩定）</option>
                   <option value="__custom__">自訂…</option>
                 </select>
               </div>
@@ -174,7 +176,7 @@
 
           <p class="hint-line" id="keyStatus" style="margin-top:var(--space-3)"></p>
           <button type="button" class="btn btn--ghost" id="openSettingsBtn" style="margin-top:var(--space-2);padding:6px 12px;font-size:13px">到「設定」填 / 改 API key</button>
-          <p class="hint-line" style="margin-top:var(--space-2)">API key 在站台「設定」面板統一管（右上齒輪），只存在你的瀏覽器；請求時經本站薄 proxy 轉給 AI 服務、用完即丟、不留存。生圖要錢、用你自己的 key —— 一組 8~24 張視模型 / 品質約 US$0.3~5。</p>
+          <p class="hint-line" style="margin-top:var(--space-2)">API key 在站台「設定」面板統一管（右上齒輪），只存在你的瀏覽器；請求時經本站薄 proxy 轉給 AI 服務、用完即丟、不留存。生圖要錢、用你自己的 key —— 一組 8~24 張視模型 / 品質約 US$0.3~5。OpenAI 的 <code style="font-family:var(--font-mono)">gpt-image-2</code> 可能還在限量釋出 / 需組織驗證 —— 若不能用，改用 <code style="font-family:var(--font-mono)">gpt-image-1</code>（下方結果某張失敗時會顯示原因）。</p>
         </div>
 
         <div class="section">
@@ -295,7 +297,7 @@
 
     var state = {
       refFile: null, refURL: null,
-      style: "sticker", titleMode: "overlay", provider: "google",
+      style: "sticker", titleMode: "ai", provider: "google",
       bgMode: "chroma", chromaTol: 40, fitMode: "auto", pad: 10,
       entries: DEFAULT_ENTRIES.map(function (e) { return { desc: e.desc, title: e.title }; }),
       busy: false, results: null,
@@ -359,22 +361,17 @@
       img.onload = function () {
         if (!img.naturalWidth) { URL.revokeObjectURL(u); showError("讀不到圖片尺寸。"); return; }
         var W = img.naturalWidth, H = img.naturalHeight, scale = Math.min(1, REF_MAX / Math.max(W, H));
-        if (scale < 1) {
-          var c = newCanvas(Math.round(W * scale), Math.round(H * scale));
-          c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
-          c.toBlob(function (b) {
-            URL.revokeObjectURL(u);
-            if (state.refURL) URL.revokeObjectURL(state.refURL);
-            state.refFile = b; state.refURL = URL.createObjectURL(b);
-            els.fileName.textContent = file.name + "  ·  縮為 " + c.width + "×" + c.height;
-            els.fileName.classList.add("is-shown"); refreshPlanNote(); syncControls();
-          }, "image/jpeg", 0.9);
-        } else {
+        var dw = Math.max(1, Math.round(W * scale)), dh = Math.max(1, Math.round(H * scale));
+        // 一律重新編碼成 PNG（≤1024px）—— OpenAI 的 /v1/images/edits 對輸入格式較挑
+        var c = newCanvas(dw, dh);
+        c.getContext("2d").drawImage(img, 0, 0, dw, dh);
+        c.toBlob(function (b) {
+          URL.revokeObjectURL(u);
           if (state.refURL) URL.revokeObjectURL(state.refURL);
-          state.refFile = file; state.refURL = u;
-          els.fileName.textContent = file.name + "  ·  " + W + "×" + H;
+          state.refFile = b; state.refURL = URL.createObjectURL(b);
+          els.fileName.textContent = file.name + "  ·  " + (scale < 1 ? ("縮為 " + dw + "×" + dh) : (W + "×" + H)) + " · PNG";
           els.fileName.classList.add("is-shown"); refreshPlanNote(); syncControls();
-        }
+        }, "image/png");
       };
       img.onerror = function () { URL.revokeObjectURL(u); showError("這個檔案無法當作圖片載入。"); };
       img.src = u;
@@ -421,10 +418,11 @@
                STYLE_PROMPT[state.style] || STYLE_PROMPT.sticker];
       var extra = els.styleExtra.value.trim(); if (extra) p.push(extra);
       p.push("Single subject only, centered, full body or upper body, with generous empty padding around it. Expressive, clean composition.");
-      if (state.bgMode === "chroma") p.push("Place the subject on a completely solid uniform flat green background, hex #00B140 (chroma key green), with absolutely no shadows, gradients, props, or other elements.");
+      var aiText = state.titleMode === "ai" && entry.title;
+      if (state.bgMode === "chroma") p.push("Put everything on a completely solid, uniform, flat green background, hex #00B140 (chroma key green) — no shadows, gradients, frames, or anything else behind " + (aiText ? "the character and the caption text" : "the character") + ".");
       else if (state.bgMode === "transparent") p.push("Transparent background (alpha channel), nothing else in the frame.");
-      if (state.titleMode === "overlay") p.push("Do not render any text, letters, captions, or words anywhere in the image.");
-      else if (entry.title) p.push("Include the short caption text \"" + entry.title + "\" in the image.");
+      if (aiText) p.push("Render the caption text \"" + entry.title + "\" as part of the sticker artwork — place it wherever it looks best (above / beside the character, inside a speech bubble, or as a bold stylized title), drawn in the same illustration style with a clear outline / strong contrast so it is easy to read. The text must be exactly \"" + entry.title + "\" and clearly legible.");
+      else p.push("Do not render any text, letters, captions, or words anywhere in the image.");
       return p.join(" ");
     }
 
@@ -438,7 +436,7 @@
       fd.append("size", "1024x1024");
       fd.append("quality", els.openaiQuality.value);
       fd.append("transparent", state.bgMode === "transparent" ? "true" : "false");
-      if (state.refFile) fd.append("reference", state.refFile, "reference.jpg");
+      if (state.refFile) fd.append("reference", state.refFile, "reference.png");
       var resp = await fetch(ENDPOINT, { method: "POST", body: fd });
       if (!resp.ok) { var m = resp.status + " " + resp.statusText; try { var j = await resp.json(); if (j && j.detail) m = j.detail; } catch (e) {} throw new Error(m); }
       var blob = await resp.blob();
