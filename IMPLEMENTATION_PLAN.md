@@ -331,3 +331,9 @@ AI 自動去背已「堪用」（imgly fp16 + 碎屑清理）；再往上：① 
 | 2026-05-11 | bg-remover 預覽改成 canvas 為主、可直接畫筆刷；下載匯出該 canvas | 自動去背不會 100% 完美，手動修補是「堪用 → 完美」最可靠的一步、且不挑模型、不增加下載量 |
 | 2026-05-11 | 「二」先做邊緣收縮（erode）+ 羽化（canvas blur on alpha），不做 guided filter | erode 消 halo 是最常見的需求、便宜又穩；guided filter（用原圖細化遮罩、找回髮絲）較重、有 halo 風險，留待之後 |
 | 2026-05-11 | 邊緣收縮 / 羽化從「模型輸出後清理過的 aiCleanCanvas」重新套用，不重跑模型 | 調滑桿要即時，重跑 80MB 模型不可接受；erode/feather 都是毫秒級 |
+
+---
+
+# 追加：移除 LINE 貼圖打包工具（2026-05-11）
+
+使用者評估後覺得 LINE 貼圖工具處理得不夠好，先移除（之後再看有沒有更合適的做法 / 現成工具）。階段 9a / 9b 視為**已撤銷**。動作：刪 `static/line-sticker/`、移除 `main.py` 的 `/line-sticker` 路由、首頁卡片與 meta、README 工具表 / 目錄結構那一條。`static/shared/chroma-key.js` 保留（image-slicer 與 bg-remover 還在用）；UPNG.js / pako 只在那頁用、隨檔移除。
