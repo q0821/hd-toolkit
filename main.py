@@ -1,7 +1,7 @@
 """hd-toolkit — 前端小工具聚合站
 
 首頁是工具選單，每個工具一個頁面。FastAPI 負責提供靜態頁與少數需要後端的 API
-（目前只有 pdf2jpg；圖片切片等工具是純前端）。
+（pdf2jpg 的轉換、sticker-ai 的薄 proxy）；其餘工具是純前端。
 """
 
 from pathlib import Path
@@ -10,7 +10,7 @@ from fastapi import FastAPI
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from app.tools import pdf2jpg
+from app.tools import pdf2jpg, sticker_ai
 
 BASE_DIR = Path(__file__).parent
 STATIC_DIR = BASE_DIR / "static"
@@ -23,6 +23,7 @@ app = FastAPI(
 
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 app.include_router(pdf2jpg.router)
+app.include_router(sticker_ai.router)
 
 
 def _page(*parts: str) -> FileResponse:
@@ -56,6 +57,12 @@ async def page_bg_remover():
 @app.get("/image-compressor", include_in_schema=False)
 async def page_image_compressor():
     return _page("image-compressor", "index.html")
+
+
+# AI 貼圖生成工具頁面（前端 + sticker-ai 薄 proxy）
+@app.get("/sticker-ai", include_in_schema=False)
+async def page_sticker_ai():
+    return _page("sticker-ai", "index.html")
 
 
 @app.get("/api/health")

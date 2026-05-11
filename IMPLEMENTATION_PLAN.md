@@ -337,3 +337,43 @@ AI 自動去背已「堪用」（imgly fp16 + 碎屑清理）；再往上：① 
 # 追加：移除 LINE 貼圖打包工具（2026-05-11）
 
 使用者評估後覺得 LINE 貼圖工具處理得不夠好，先移除（之後再看有沒有更合適的做法 / 現成工具）。階段 9a / 9b 視為**已撤銷**。動作：刪 `static/line-sticker/`、移除 `main.py` 的 `/line-sticker` 路由、首頁卡片與 meta、README 工具表 / 目錄結構那一條。`static/shared/chroma-key.js` 保留（image-slicer 與 bg-remover 還在用）；UPNG.js / pako 只在那頁用、隨檔移除。
+
+---
+
+# 追加：AI 貼圖生成工具 `/sticker-ai`（2026-05-11）
+
+走「上傳照片 + 選風格 + 結構化表情清單 → AI 逐張生圖 → 去背 + fit 進 LINE 尺寸 + 疊標題 → main/tab → ZIP」。Key 存瀏覽器 `localStorage`；OpenAI 與 Google（Nano Banana / Nano Banana Pro）兩家，都走一支薄 FastAPI proxy（轉 key、用完即丟、不存不 log）。
+
+## 階段 11：AI 貼圖生成工具
+**目標**：`/sticker-ai` — 兩家 AI 圖像服務（key 瀏覽器端）、結構化表情清單、生完接 LINE 打包，ZIP 下載
+- **後端** `app/tools/sticker_ai.py`（`POST /api/sticker-ai/generate`，`httpx` 轉呼叫）：
+  - 收 `provider/api_key/model/prompt/size/quality/transparent` + 可選 `reference`（multipart）；回 `image/png` bytes
+  - OpenAI：有參考圖 → `POST /v1/images/edits`（multipart，`image[]`）；無 → `/v1/images/generations`（JSON）。`Authorization: Bearer`。`background:transparent` 視 transparent 旗標。回 `data[0].b64_json` → decode
+  - Google：`POST generativelanguage.googleapis.com/v1beta/models/{model}:generateContent`，`x-goog-api-key`，body `contents:[{parts:[{text:prompt},(可選){inline_data:{mime_type,data:base64}}]}], generationConfig:{responseModalities:["TEXT","IMAGE"]}` → 從 `candidates[].content.parts[]` 取 `inlineData.data` → decode；沒圖（拒絕 / 純文字）→ 502 + 訊息片段
+  - 錯誤：把上游 status + sanitized message 轉回（不含 key）；不 log body
+  - `httpx` 加進 `requirements.txt`；`main.py` `include_router` + `GET /sticker-ai`
+- **前端** `static/sticker-ai/index.html`（沿用 app.css、重用 `chroma-key.js` + JSZip CDN；fit 邏輯重寫一份小的）：
+  - `01 參考圖（可選）` dropzone（上傳後自動縮到 ≤1024px 存著，每次請求帶這份省流量）
+  - `02 風格` `.segmented`（貼紙白邊 / 手繪 / Q版 / 水彩 / 線稿 / 卡通）+ 額外描述 text-field
+  - `03 表情 / 動作` 可編輯清單（預設 8 條：開心揮手/嗨、大笑/哈哈哈、哭哭/嗚嗚、生氣/氣氣、比OK/OK、鞠躬道謝/謝謝、雙手合十拜託/拜託、戴睡帽打哈欠/晚安），每條 = 描述 + 標題 + 移除；「+新增」；狀態列「目前 N 張 — LINE 一組需 8/16/24」
+  - `04 標題文字` `.segmented` 不疊 / 疊在貼圖上（Canvas 白邊黑字、底部）
+  - `05 AI 服務` `.segmented` OpenAI / Google；各自：模型 `<select>`（OpenAI: `gpt-image-1`/`gpt-image-1.5`/自訂；Google: `gemini-2.5-flash-image`(Nano Banana)/`gemini-3-pro-image-preview`(Nano Banana Pro)/自訂）+ 自訂 ID text-field、OpenAI 多一個品質 select(low/medium/high，預設 medium)、API key text-field、清除 key、費用提示。Key 存 `localStorage`（`sticker-ai-openai-key` / `sticker-ai-google-key`），載入時還原
+  - `06 背景 / 尺寸` `.segmented` 背景（綠幕去背[prompt 加「純綠 #00B140 背景、無陰影」+ chroma-key]／模型透明[OpenAI `background:transparent`；Google prompt 加「透明背景」]／不處理）+ 容差 range；fit `.segmented`（自動 ≤370×320 / 正方形 320）+ 留白 range
+  - 「開始生成（N 張）」：逐條 → 組 prompt（風格 + 描述 + 背景指示 + 不要它畫文字若要疊標題）→ POST proxy → 取 PNG → 載 canvas →（綠幕模式：chroma 去背）→（疊標題模式：Canvas 寫標題）→ 裁透明邊 + fit 進 LINE 尺寸（偶數、留白）→ 存。進度條（N 張）。第 1 張 → main.png(240×240) / tab.png(96×74)。打包 ZIP（`main.png` + `01.png…` + `tab.png`）
+  - 右：結果牆（縮圖 + `NN.png · WxH` + 「重生這張」）+ main/tab + 「下載貼圖包 ZIP」+ 空狀態；生成前顯示參考圖 + 計畫張數
+  - `static/index.html` 加卡片；`README.md` 補
+- 邊界：選的 provider 沒 key → 按鈕禁用 + 提示；某張失敗（API 錯 / 沒回圖）→ 那格標錯、其餘繼續；費用警告（一組 8~24 張可能 US$0.3~5，用你自己的 key）
+
+**成功標準**：填 key → 上傳照片 / 選風格 / 8 條表情 → 開始生成 → 逐張出圖、去背、疊標題、fit 進 ≤370×320 偶數 → 8 張透明 PNG + main 240×240 + tab 96×74 → ZIP；無 key 時按鈕禁用；某張 API 失敗不中斷其餘；可「重生這張」；key 重新整理後還在 localStorage。**API 整合需使用者自己的 key 實測**（我這邊只能驗到 proxy 結構 + 非 API 的 UI / 打包流程）
+
+**測試**：proxy 用假 key → 上游 401 正確轉回；前端非 API 部分（清單增刪、key 存取、背景 / fit 模式切換、用一張本機合成 PNG 模擬「生成結果」走完去背 + fit + ZIP）；桌機 + 手機寬
+
+**狀態**：完成（後端 `app/tools/sticker_ai.py` proxy + `httpx` 進 requirements + `main.py` 掛 router & `/sticker-ai` 路由；前端 `static/sticker-ai/index.html`：參考圖（自動縮 ≤1024px）/ 6 種風格 + 額外描述 / 可增刪改的表情清單（預設 8 條）/ 標題疊不疊 / OpenAI ⇄ Google 切換（各自模型 select + 自訂 ID + key 存 localStorage + 清除）/ 背景（綠幕去背 prompt 加純綠底 + chroma-key｜模型透明｜不處理）+ 容差 / fit（自動 ≤370×320 ｜正方形 320）+ 留白 / 逐張生成 + 進度 + 結果牆 + 每張「重生這張」+ main/tab + ZIP；首頁卡片 + README。實測：proxy 用真實假 key → Google 回「API key not valid」、OpenAI 回「Incorrect API key」皆乾淨轉回（uvicorn log 只記 request line、不含 key）；前端 mock fetch 回合成綠幕 PNG → 走完 chroma 去背（角落 alpha=0）+ 裁 + fit（320×320 偶數 ≤370×320）+ 疊標題（「讚」「哈哈哈」可見）+ main 240×240 / tab 96×74 + ZIP 可下載；清單增刪、key 存 localStorage、按鈕情境化（無 key→禁用）皆正常；無 JS error。**真 AI 生成需使用者自己的 key 才能實測**（無頭環境沒 key）。本機需 `pip install httpx` 才能跑（已加進 requirements；部署時 Docker 會裝）
+
+## 追加決策紀錄
+| Date | Decision | Rationale |
+|------|----------|-----------|
+| 2026-05-11 | AI 貼圖走獨立工具 `/sticker-ai`、key 存 localStorage、OpenAI + Google 兩家都經一支薄 FastAPI proxy | 使用者選；proxy 解 OpenAI 瀏覽器 CORS、key 不進 DevTools network，且專案已有「transient relay」模式（pdf2jpg）；proxy 不存不 log key |
+| 2026-05-11 | 結構化表情清單（預設 8 條可增刪改）而非自由 prompt；標題傾向 Canvas 疊不讓模型畫 | 使用者選；可預期、好控制張數、好重生單張；模型畫文字易糊 / 易錯字 |
+| 2026-05-11 | 透明背景預設走「prompt 要求純綠底 + chroma-key 去綠」而非依賴模型透明輸出 | 跨兩家最穩；模型透明輸出品質 / 支援度不一（OpenAI 的 `background:transparent` 還行，Google 較看運氣）；另留「模型透明」「不處理」選項 |
+| 2026-05-11 | 參考圖上傳後縮到 ≤1024px 再每次帶給 proxy | 一組 N 張 = N 次上傳，原圖太大會浪費流量；API 對 ~1024px 輸入也夠用 |

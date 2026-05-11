@@ -1,0 +1,622 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AI 貼圖生成 · HD 的工具箱</title>
+  <meta name="description" content="上傳一張照片、選風格、列好表情，AI 幫你生成一整組貼圖：自動去背、縮到 LINE 尺寸、疊標題、打包 ZIP。串 OpenAI 或 Google Nano Banana，API key 只存在你的瀏覽器。">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="/static/shared/app.css">
+  <script src="/static/shared/theme.js"></script>
+  <style>
+    /* AI 貼圖生成工具專屬樣式（共用元件在 app.css） */
+    .tool-layout__preview { align-items: stretch; justify-content: flex-start; overflow-y: auto; }
+    .ai-wrap { width: 100%; max-width: 760px; margin: 0 auto; }
+    .ai-empty-center { margin: auto; }
+    .checker {
+      background-color: #fff;
+      background-image:
+        linear-gradient(45deg, #d8d8d8 25%, transparent 25%),
+        linear-gradient(-45deg, #d8d8d8 25%, transparent 25%),
+        linear-gradient(45deg, transparent 75%, #d8d8d8 75%),
+        linear-gradient(-45deg, transparent 75%, #d8d8d8 75%);
+      background-size: 16px 16px;
+      background-position: 0 0, 0 8px, 8px -8px, -8px 0;
+    }
+
+    .ai-entry { display: flex; align-items: center; gap: var(--space-2); margin-top: var(--space-2); flex-wrap: wrap; }
+    .ai-entry__num { font-family: var(--font-mono); font-size: 12px; color: var(--text-dim); width: 22px; flex-shrink: 0; }
+    .ai-entry__desc { flex: 1.6 1 120px; min-width: 0; }
+    .ai-entry__title { flex: 1 1 80px; min-width: 0; }
+    .ai-entry .text-field { padding: 7px 10px; font-size: 13px; }
+    .ai-entry__rm { padding: 6px 8px; font-size: 12px; flex-shrink: 0; }
+
+    select.text-field { -webkit-appearance: none; appearance: none; padding-right: 28px;
+      background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%237c705c' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M6 9l6 6 6-6'/></svg>");
+      background-repeat: no-repeat; background-position: right 10px center; }
+
+    .ai-meta { padding-bottom: var(--space-4); margin-bottom: var(--space-4); border-bottom: 1px solid var(--border); }
+    .ai-meta-head { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
+    .ai-meta-head__spacer { flex: 1; }
+    .ai-special { display: flex; gap: var(--space-4); margin-top: var(--space-4); }
+    .ai-special figure { text-align: center; }
+    .ai-special figcaption { margin-top: 4px; font-family: var(--font-mono); font-size: 11px; color: var(--text-dim); }
+    .ai-special .frame { display: inline-block; line-height: 0; border: 1px solid var(--border); border-radius: var(--radius-sm); overflow: hidden; }
+    .ai-special img { display: block; }
+
+    .ai-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: var(--space-3); }
+    .ai-cell { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-md); padding: var(--space-2); text-align: center; }
+    .ai-cell .frame { display: block; border-radius: var(--radius-sm); overflow: hidden; min-height: 70px; }
+    .ai-cell img { display: block; width: 100%; height: auto; }
+    .ai-cell figcaption { margin-top: 6px; font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); }
+    .ai-cell figcaption .err { color: var(--error); }
+    .ai-cell .btn { padding: 4px 10px; font-size: 12px; margin-top: 6px; }
+
+    .ai-ref-preview { display: inline-block; line-height: 0; border-radius: var(--radius-sm); overflow: hidden; border: 1px solid var(--border); margin-top: var(--space-3); }
+    .ai-ref-preview img { display: block; max-width: 200px; max-height: 200px; }
+
+    .hint-line { margin-top: var(--space-2); font-size: 12px; color: var(--text-dim); }
+    .hint-line a { color: var(--text-muted); }
+    .segmented--wrap { flex-wrap: wrap; }
+    .provider-pane { display: none; }
+    .provider-pane.is-active { display: block; }
+    .row-2 { display: flex; gap: var(--space-3); flex-wrap: wrap; align-items: flex-end; }
+    .row-2 > div { flex: 1 1 140px; }
+  </style>
+</head>
+<body>
+
+  <header class="app-header">
+    <div class="app-header__row">
+      <a href="/" class="brand">HD 的工具箱</a>
+      <span class="crumb-sep">/</span>
+      <span class="crumb-cur">AI 貼圖生成</span>
+      <span class="app-header__spacer"></span>
+      <a href="/" class="btn btn--ghost" style="padding:6px 10px;font-size:13px">
+        <svg class="icon icon--sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+        回工具箱
+      </a>
+      <button type="button" class="theme-toggle" id="themeToggle" aria-label="切換亮 / 暗模式" title="切換亮 / 暗模式">
+        <svg class="icon icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
+        <svg class="icon icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <main class="app-main app-main--full">
+    <div class="tool-layout">
+
+      <!-- ===== 左：控制 ===== -->
+      <div class="tool-layout__controls">
+
+        <div class="section">
+          <div class="section__label"><span class="section__num">01</span> 參考圖（可選）</div>
+          <div class="dropzone dropzone--compact" id="dropzone">
+            <input type="file" id="fileInput" accept="image/png,image/jpeg,image/webp" hidden>
+            <svg class="dropzone__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M8.5 10a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3z"/><path d="M21 15l-5-5L5 21"/></svg>
+            <div class="dropzone__title">放一張人 / 寵物 / 角色照</div>
+            <div class="dropzone__hint">AI 會照著做；不放就純用文字生成。上傳後會自動縮到 1024px。</div>
+            <span class="dropzone__file" id="fileName"></span>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section__label"><span class="section__num">02</span> 風格</div>
+          <div class="segmented segmented--wrap" id="styleSeg" role="group" aria-label="風格">
+            <button type="button" class="segmented__btn" data-style="sticker" aria-pressed="true">貼紙白邊</button>
+            <button type="button" class="segmented__btn" data-style="handdraw" aria-pressed="false">手繪</button>
+            <button type="button" class="segmented__btn" data-style="chibi" aria-pressed="false">Q版</button>
+            <button type="button" class="segmented__btn" data-style="watercolor" aria-pressed="false">水彩</button>
+            <button type="button" class="segmented__btn" data-style="lineart" aria-pressed="false">線稿</button>
+            <button type="button" class="segmented__btn" data-style="cartoon" aria-pressed="false">卡通</button>
+          </div>
+          <input type="text" class="text-field mt-4" id="styleExtra" autocomplete="off" placeholder="額外風格描述（可選），例如：暖色調、粗線條、像素風…">
+        </div>
+
+        <div class="section">
+          <div class="section__label"><span class="section__num">03</span> 表情 / 動作（一條 = 一張貼圖）</div>
+          <div id="entryList"></div>
+          <button type="button" class="btn btn--secondary mt-4" id="addEntryBtn" style="padding:6px 14px;font-size:13px">+ 新增一條</button>
+          <p class="ai-status hint-line" id="countStatus" style="color:var(--text-muted)"></p>
+        </div>
+
+        <div class="section">
+          <div class="section__label"><span class="section__num">04</span> 標題文字</div>
+          <div class="segmented" id="titleSeg" role="group" aria-label="標題文字">
+            <button type="button" class="segmented__btn" data-title="overlay" aria-pressed="true">疊在貼圖上</button>
+            <button type="button" class="segmented__btn" data-title="none" aria-pressed="false">不疊文字</button>
+          </div>
+          <p class="hint-line">「疊在貼圖上」會由本工具用 Canvas 在貼圖底部寫上每條的「標題」（白邊黑字），比讓 AI 畫文字穩。</p>
+        </div>
+
+        <div class="section">
+          <div class="section__label"><span class="section__num">05</span> AI 服務</div>
+          <div class="segmented" id="providerSeg" role="group" aria-label="AI 服務">
+            <button type="button" class="segmented__btn" data-provider="openai" aria-pressed="false">OpenAI</button>
+            <button type="button" class="segmented__btn" data-provider="google" aria-pressed="true">Google</button>
+          </div>
+
+          <div class="provider-pane mt-4" id="paneOpenai">
+            <div class="row-2">
+              <div>
+                <span class="field-label">模型</span>
+                <select class="text-field" id="openaiModel">
+                  <option value="gpt-image-1">gpt-image-1</option>
+                  <option value="gpt-image-1.5">gpt-image-1.5</option>
+                  <option value="__custom__">自訂…</option>
+                </select>
+              </div>
+              <div>
+                <span class="field-label">品質</span>
+                <select class="text-field" id="openaiQuality">
+                  <option value="low">low（便宜）</option>
+                  <option value="medium" selected>medium</option>
+                  <option value="high">high（最佳、較貴）</option>
+                </select>
+              </div>
+            </div>
+            <input type="text" class="text-field mt-4" id="openaiModelCustom" autocomplete="off" placeholder="自訂模型 ID" hidden>
+            <span class="field-label mt-4">OpenAI API key</span>
+            <div class="row-2">
+              <div style="flex:3 1 200px"><input type="password" class="text-field" id="openaiKey" autocomplete="off" placeholder="sk-..."></div>
+              <div style="flex:0 0 auto"><button type="button" class="btn btn--ghost" id="openaiKeyClear" style="padding:9px 12px;font-size:13px">清除</button></div>
+            </div>
+          </div>
+
+          <div class="provider-pane is-active mt-4" id="paneGoogle">
+            <span class="field-label">模型</span>
+            <select class="text-field" id="googleModel">
+              <option value="gemini-2.5-flash-image">Nano Banana（gemini-2.5-flash-image）</option>
+              <option value="gemini-3-pro-image-preview" selected>Nano Banana Pro（gemini-3-pro-image-preview）</option>
+              <option value="__custom__">自訂…</option>
+            </select>
+            <input type="text" class="text-field mt-4" id="googleModelCustom" autocomplete="off" placeholder="自訂模型 ID" hidden>
+            <span class="field-label mt-4">Google AI Studio API key</span>
+            <div class="row-2">
+              <div style="flex:3 1 200px"><input type="password" class="text-field" id="googleKey" autocomplete="off" placeholder="AIza..."></div>
+              <div style="flex:0 0 auto"><button type="button" class="btn btn--ghost" id="googleKeyClear" style="padding:9px 12px;font-size:13px">清除</button></div>
+            </div>
+          </div>
+
+          <p class="hint-line" style="margin-top:var(--space-3)">API key 只存在你的瀏覽器（<code style="font-family:var(--font-mono)">localStorage</code>），請求時會經本站的薄 proxy 轉給 AI 服務、用完即丟、不留存。生圖要錢、用你自己的 key —— 一組 8~24 張視模型 / 品質約 US$0.3~5。</p>
+        </div>
+
+        <div class="section">
+          <div class="section__label"><span class="section__num">06</span> 背景 / 尺寸</div>
+          <span class="field-label">背景處理</span>
+          <div class="segmented segmented--wrap" id="bgSeg" role="group" aria-label="背景處理">
+            <button type="button" class="segmented__btn" data-bg="chroma" aria-pressed="true">綠幕去背</button>
+            <button type="button" class="segmented__btn" data-bg="transparent" aria-pressed="false">模型透明</button>
+            <button type="button" class="segmented__btn" data-bg="none" aria-pressed="false">不處理</button>
+          </div>
+          <div class="mt-4 is-disabled-row" id="chromaRow" style="opacity:1;pointer-events:auto">
+            <span class="field-label">綠幕容差</span>
+            <div class="range-field"><input type="range" id="chromaSlider" min="0" max="100" value="40"><span class="range-field__val" id="chromaVal">40</span></div>
+          </div>
+          <div class="mt-6">
+            <span class="field-label">輸出尺寸</span>
+            <div class="segmented segmented--wrap" id="fitSeg" role="group" aria-label="輸出尺寸">
+              <button type="button" class="segmented__btn" data-fit="auto" aria-pressed="true">自動（≤ 370×320）</button>
+              <button type="button" class="segmented__btn" data-fit="square" aria-pressed="false">正方形 320</button>
+            </div>
+          </div>
+          <div class="mt-4">
+            <span class="field-label">四周留白</span>
+            <div class="range-field"><input type="range" id="padSlider" min="0" max="40" value="10"><span class="range-field__val" id="padVal">10</span></div>
+          </div>
+          <p class="hint-line">「綠幕去背」會請 AI 把主體畫在純綠底上、再用內建去背把綠去掉（跨服務最穩）。會用第 1 張生 <code style="font-family:var(--font-mono)">main.png</code>(240×240) / <code style="font-family:var(--font-mono)">tab.png</code>(96×74)。</p>
+        </div>
+
+        <button type="button" class="btn btn--primary btn--block" id="goBtn" disabled>先填 API key</button>
+
+        <div class="progress" id="progress">
+          <div class="progress__header">
+            <span class="progress__label">生成中</span>
+            <span class="progress__status" id="progressStatus"></span>
+          </div>
+          <div class="progress__track"><div class="progress__bar" id="progressBar"></div></div>
+        </div>
+
+        <div class="message message--error" id="errorMsg">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M15 9l-6 6M9 9l6 6"/></svg>
+          <span id="errorText"></span>
+        </div>
+        <div class="message message--success" id="successMsg">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><path d="M22 4L12 14.01l-3-3"/></svg>
+          <span id="successText"></span>
+        </div>
+      </div>
+
+      <!-- ===== 右：結果 ===== -->
+      <div class="tool-layout__preview" id="previewArea">
+        <div class="preview-empty ai-empty-center" id="previewEmpty">
+          <svg class="preview-empty__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2v4M12 18v4M2 12h4M18 12h4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M19.07 4.93l-2.83 2.83M7.76 16.24l-2.83 2.83"/></svg>
+          <p>填好設定、按「開始生成」後，貼圖會顯示於此</p>
+          <p class="hint-line" id="planNote" style="margin-top:var(--space-3)"></p>
+          <div id="refPreviewHolder"></div>
+        </div>
+        <div class="ai-wrap" id="resultPanel" hidden>
+          <div class="ai-meta">
+            <div class="ai-meta-head">
+              <span class="ai-status" id="resultSummary" style="font-size:14px;color:var(--text-muted)"></span>
+              <span class="ai-meta-head__spacer"></span>
+              <button type="button" class="btn btn--secondary" id="zipBtn" style="padding:6px 12px;font-size:13px" disabled>下載貼圖包 ZIP</button>
+            </div>
+            <div class="ai-special" id="specialHolder"></div>
+          </div>
+          <div class="ai-grid" id="resultGrid"></div>
+        </div>
+      </div>
+
+    </div>
+  </main>
+
+  <script src="/static/shared/chroma-key.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+  <script>
+  (function () {
+    "use strict";
+    var ENDPOINT = "/api/sticker-ai/generate";
+    var ST_MAX_W = 370, ST_MAX_H = 320, SQUARE = 320, MAIN = 240, TAB_W = 96, TAB_H = 74;
+    var ALLOWED = [8, 16, 24], MAX_ENTRIES = 40, ALPHA_T = 12, REF_MAX = 1024;
+    var KEYS_LS = { openai: "sticker-ai-openai-key", google: "sticker-ai-google-key" };
+    var STYLE_PROMPT = {
+      sticker: "Die-cut sticker style: clean thick white outline around the subject, flat bright colors, simple cel shading, bold and cute.",
+      handdraw: "Hand-drawn doodle style: loose ink linework, soft hand-painted fills, warm and friendly.",
+      chibi: "Chibi / super-deformed cute style: oversized head, tiny body, big expressive eyes, soft pastel colors.",
+      watercolor: "Soft watercolor illustration: gentle bleeding colors, delicate linework, airy and light.",
+      lineart: "Clean bold black line art on white with minimal flat color accents, simple shapes.",
+      cartoon: "Modern flat cartoon style: smooth vector shapes, vivid colors, lively expression.",
+    };
+    var DEFAULT_ENTRIES = [
+      { desc: "笑著揮手打招呼", title: "嗨" },
+      { desc: "開心大笑", title: "哈哈哈" },
+      { desc: "哭哭委屈、流眼淚", title: "嗚嗚" },
+      { desc: "生氣鼓臉", title: "氣氣" },
+      { desc: "比 OK 手勢、眨眼", title: "OK" },
+      { desc: "鞠躬道謝", title: "謝謝" },
+      { desc: "雙手合十拜託", title: "拜託" },
+      { desc: "戴睡帽打哈欠", title: "晚安" },
+    ];
+
+    var $ = function (id) { return document.getElementById(id); };
+    function el(tag, cls, text) { var n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; }
+    var els = {
+      dropzone: $("dropzone"), fileInput: $("fileInput"), fileName: $("fileName"),
+      styleSeg: $("styleSeg"), styleExtra: $("styleExtra"),
+      entryList: $("entryList"), addEntryBtn: $("addEntryBtn"), countStatus: $("countStatus"),
+      titleSeg: $("titleSeg"),
+      providerSeg: $("providerSeg"), paneOpenai: $("paneOpenai"), paneGoogle: $("paneGoogle"),
+      openaiModel: $("openaiModel"), openaiModelCustom: $("openaiModelCustom"), openaiQuality: $("openaiQuality"), openaiKey: $("openaiKey"), openaiKeyClear: $("openaiKeyClear"),
+      googleModel: $("googleModel"), googleModelCustom: $("googleModelCustom"), googleKey: $("googleKey"), googleKeyClear: $("googleKeyClear"),
+      bgSeg: $("bgSeg"), chromaRow: $("chromaRow"), chromaSlider: $("chromaSlider"), chromaVal: $("chromaVal"),
+      fitSeg: $("fitSeg"), padSlider: $("padSlider"), padVal: $("padVal"),
+      goBtn: $("goBtn"), progress: $("progress"), progressBar: $("progressBar"), progressStatus: $("progressStatus"),
+      errorMsg: $("errorMsg"), errorText: $("errorText"), successMsg: $("successMsg"), successText: $("successText"),
+      previewEmpty: $("previewEmpty"), planNote: $("planNote"), refPreviewHolder: $("refPreviewHolder"),
+      resultPanel: $("resultPanel"), resultSummary: $("resultSummary"), zipBtn: $("zipBtn"), specialHolder: $("specialHolder"), resultGrid: $("resultGrid"),
+    };
+
+    var state = {
+      refFile: null, refURL: null,
+      style: "sticker", titleMode: "overlay", provider: "google",
+      bgMode: "chroma", chromaTol: 40, fitMode: "auto", pad: 10,
+      entries: DEFAULT_ENTRIES.map(function (e) { return { desc: e.desc, title: e.title }; }),
+      busy: false, results: null,
+    };
+
+    // ---------- 通用 ----------
+    function showError(m) { els.errorText.textContent = m; els.errorMsg.classList.add("is-shown"); els.successMsg.classList.remove("is-shown"); }
+    function showSuccess(m) { els.successText.textContent = m; els.successMsg.classList.add("is-shown"); els.errorMsg.classList.remove("is-shown"); }
+    function hideMessages() { els.errorMsg.classList.remove("is-shown"); els.successMsg.classList.remove("is-shown"); }
+    function showProgress(label) { els.progress.querySelector(".progress__label").textContent = label || "處理中"; els.progressStatus.textContent = ""; els.progressBar.style.width = "0%"; els.progress.classList.add("is-shown"); }
+    function setProgress(pct, status) { els.progressBar.style.width = Math.max(0, Math.min(100, pct)) + "%"; if (status != null) els.progressStatus.textContent = status; }
+    function hideProgress() { els.progress.classList.remove("is-shown"); }
+    function pad2(n) { return (n < 10 ? "0" : "") + n; }
+    function fmtSize(b) { return b < 1024 ? b + " B" : b < 1048576 ? (b / 1024).toFixed(b < 10240 ? 1 : 0) + " KB" : (b / 1048576).toFixed(2) + " MB"; }
+    function newCanvas(w, h) { var c = document.createElement("canvas"); c.width = w; c.height = h; return c; }
+    function evenUp(n) { n = Math.round(n); return n % 2 ? n + 1 : n; }
+    function canvasToBlob(canvas, mime) { return new Promise(function (res, rej) { canvas.toBlob(function (b) { b ? res(b) : rej(new Error("產生圖片失敗")); }, mime); }); }
+    function loadBlobToImg(blob) { return new Promise(function (res, rej) { var u = URL.createObjectURL(blob), i = new Image(); i.onload = function () { res({ img: i, url: u }); }; i.onerror = function () { URL.revokeObjectURL(u); rej(new Error("結果不是有效的圖片")); }; i.src = u; }); }
+    function imgToCanvas(img) { var c = newCanvas(img.naturalWidth, img.naturalHeight); c.getContext("2d", { willReadFrequently: true }).drawImage(img, 0, 0); return c; }
+    function cropToCanvas(src, sx, sy, sw, sh) { var c = newCanvas(sw, sh); c.getContext("2d").drawImage(src, sx, sy, sw, sh, 0, 0, sw, sh); return c; }
+    function triggerDownload(blob, name) { var u = URL.createObjectURL(blob), a = document.createElement("a"); a.href = u; a.download = name; document.body.appendChild(a); a.click(); document.body.removeChild(a); setTimeout(function () { URL.revokeObjectURL(u); }, 1000); }
+    function lsGet(k) { try { return localStorage.getItem(k) || ""; } catch (e) { return ""; } }
+    function lsSet(k, v) { try { v ? localStorage.setItem(k, v) : localStorage.removeItem(k); } catch (e) {} }
+
+    function contentBBox(canvas) {
+      var w = canvas.width, h = canvas.height, d = canvas.getContext("2d", { willReadFrequently: true }).getImageData(0, 0, w, h).data;
+      var minX = w, minY = h, maxX = -1, maxY = -1;
+      for (var y = 0; y < h; y++) for (var x = 0; x < w; x++) if (d[(y * w + x) * 4 + 3] > ALPHA_T) { if (x < minX) minX = x; if (x > maxX) maxX = x; if (y < minY) minY = y; if (y > maxY) maxY = y; }
+      if (maxX < 0) return null;
+      return { x: minX, y: minY, w: maxX - minX + 1, h: maxY - minY + 1 };
+    }
+    function scaleCanvas(src, dw, dh) {
+      var cur = src;
+      while (cur.width / dw > 2 || cur.height / dh > 2) { var nw = Math.max(dw, Math.round(cur.width / 2)), nh = Math.max(dh, Math.round(cur.height / 2)); var t = newCanvas(nw, nh); t.getContext("2d").drawImage(cur, 0, 0, nw, nh); cur = t; }
+      var out = newCanvas(dw, dh), c = out.getContext("2d"); c.imageSmoothingQuality = "high"; c.drawImage(cur, 0, 0, dw, dh); return out;
+    }
+    function fitInto(content, boxW, boxH, pad, exact) {
+      var availW = Math.max(1, boxW - pad * 2), availH = Math.max(1, boxH - pad * 2);
+      var s = Math.min(availW / content.width, availH / content.height);
+      var cw = Math.max(1, Math.round(content.width * s)), ch = Math.max(1, Math.round(content.height * s));
+      var scaled = scaleCanvas(content, cw, ch);
+      var outW = exact ? boxW : evenUp(Math.min(boxW, cw + pad * 2)), outH = exact ? boxH : evenUp(Math.min(boxH, ch + pad * 2));
+      var out = newCanvas(outW, outH);
+      out.getContext("2d").drawImage(scaled, Math.round((outW - cw) / 2), Math.round((outH - ch) / 2));
+      return { canvas: out, w: outW, h: outH };
+    }
+    function makeFixed(content, w, h) { var pad = Math.round(Math.min(w, h) * 0.06); return fitInto(content, w, h, pad, true).canvas; }
+    function overlayTitle(canvas, text) {
+      text = String(text || "").trim(); if (!text) return;
+      var ctx = canvas.getContext("2d"), w = canvas.width, h = canvas.height, fs = Math.round(w * 0.14);
+      ctx.textAlign = "center"; ctx.textBaseline = "alphabetic"; ctx.font = "bold " + fs + "px sans-serif";
+      while (fs > 8 && ctx.measureText(text).width > w * 0.9) { fs -= 2; ctx.font = "bold " + fs + "px sans-serif"; }
+      var y = h - Math.round(h * 0.06);
+      ctx.lineJoin = "round"; ctx.lineWidth = Math.max(2, fs * 0.24); ctx.strokeStyle = "rgba(255,255,255,0.95)"; ctx.strokeText(text, w / 2, y);
+      ctx.fillStyle = "#222"; ctx.fillText(text, w / 2, y);
+    }
+
+    // ---------- 參考圖 ----------
+    function loadRefFile(file) {
+      hideMessages();
+      if (!file || !/^image\/(png|jpeg|webp)$/.test(file.type)) { showError("請選 PNG / JPG / WEBP。"); return; }
+      var u = URL.createObjectURL(file), img = new Image();
+      img.onload = function () {
+        if (!img.naturalWidth) { URL.revokeObjectURL(u); showError("讀不到圖片尺寸。"); return; }
+        var W = img.naturalWidth, H = img.naturalHeight, scale = Math.min(1, REF_MAX / Math.max(W, H));
+        if (scale < 1) {
+          var c = newCanvas(Math.round(W * scale), Math.round(H * scale));
+          c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+          c.toBlob(function (b) {
+            URL.revokeObjectURL(u);
+            if (state.refURL) URL.revokeObjectURL(state.refURL);
+            state.refFile = b; state.refURL = URL.createObjectURL(b);
+            els.fileName.textContent = file.name + "  ·  縮為 " + c.width + "×" + c.height;
+            els.fileName.classList.add("is-shown"); refreshPlanNote(); syncControls();
+          }, "image/jpeg", 0.9);
+        } else {
+          if (state.refURL) URL.revokeObjectURL(state.refURL);
+          state.refFile = file; state.refURL = u;
+          els.fileName.textContent = file.name + "  ·  " + W + "×" + H;
+          els.fileName.classList.add("is-shown"); refreshPlanNote(); syncControls();
+        }
+      };
+      img.onerror = function () { URL.revokeObjectURL(u); showError("這個檔案無法當作圖片載入。"); };
+      img.src = u;
+    }
+
+    // ---------- 表情清單 ----------
+    function renderEntries() {
+      els.entryList.replaceChildren();
+      state.entries.forEach(function (e, i) {
+        var row = el("div", "ai-entry");
+        var d = el("input", "text-field ai-entry__desc"); d.type = "text"; d.value = e.desc; d.placeholder = "表情 / 動作"; d.autocomplete = "off";
+        d.addEventListener("input", function () { e.desc = d.value; });
+        var t = el("input", "text-field ai-entry__title"); t.type = "text"; t.value = e.title; t.placeholder = "標題"; t.autocomplete = "off";
+        t.addEventListener("input", function () { e.title = t.value; });
+        var rm = el("button", "btn btn--ghost ai-entry__rm", "移除"); rm.type = "button";
+        rm.addEventListener("click", function () { if (state.busy) return; state.entries.splice(i, 1); renderEntries(); updateCountStatus(); refreshPlanNote(); syncControls(); });
+        row.append(el("span", "ai-entry__num", pad2(i + 1)), d, t, rm);
+        els.entryList.appendChild(row);
+      });
+    }
+    function updateCountStatus() {
+      var n = state.entries.length;
+      if (n === 0) { els.countStatus.textContent = "至少加一條表情。LINE 一組需 8 / 16 / 24 張。"; els.countStatus.style.color = "var(--warning)"; }
+      else if (ALLOWED.indexOf(n) >= 0) { els.countStatus.textContent = "目前 " + n + " 條 — 符合 LINE 的組數。"; els.countStatus.style.color = "var(--text-muted)"; }
+      else { els.countStatus.textContent = "目前 " + n + " 條 — LINE 一組需 8 / 16 / 24 張（仍可生成，上架前自己調整）。"; els.countStatus.style.color = "var(--warning)"; }
+    }
+
+    // ---------- 模型 / key ----------
+    function currentModel() {
+      if (state.provider === "openai") { var v = els.openaiModel.value; return v === "__custom__" ? (els.openaiModelCustom.value.trim() || "gpt-image-1") : v; }
+      var g = els.googleModel.value; return g === "__custom__" ? (els.googleModelCustom.value.trim() || "gemini-2.5-flash-image") : g;
+    }
+    function currentKey() { return (state.provider === "openai" ? els.openaiKey.value : els.googleKey.value).trim(); }
+
+    // ---------- prompt ----------
+    function buildPrompt(entry) {
+      var subject = state.refFile ? "the same person / pet / character shown in the provided reference image (keep their look consistent)" : "a cute original mascot character";
+      var p = ["A LINE messenger sticker of " + subject + ", " + entry.desc + ".",
+               STYLE_PROMPT[state.style] || STYLE_PROMPT.sticker];
+      var extra = els.styleExtra.value.trim(); if (extra) p.push(extra);
+      p.push("Single subject only, centered, full body or upper body, with generous empty padding around it. Expressive, clean composition.");
+      if (state.bgMode === "chroma") p.push("Place the subject on a completely solid uniform flat green background, hex #00B140 (chroma key green), with absolutely no shadows, gradients, props, or other elements.");
+      else if (state.bgMode === "transparent") p.push("Transparent background (alpha channel), nothing else in the frame.");
+      if (state.titleMode === "overlay") p.push("Do not render any text, letters, captions, or words anywhere in the image.");
+      else if (entry.title) p.push("Include the short caption text \"" + entry.title + "\" in the image.");
+      return p.join(" ");
+    }
+
+    // ---------- 產生一張 ----------
+    async function generateOne(entry) {
+      var fd = new FormData();
+      fd.append("provider", state.provider);
+      fd.append("api_key", currentKey());
+      fd.append("model", currentModel());
+      fd.append("prompt", buildPrompt(entry));
+      fd.append("size", "1024x1024");
+      fd.append("quality", els.openaiQuality.value);
+      fd.append("transparent", state.bgMode === "transparent" ? "true" : "false");
+      if (state.refFile) fd.append("reference", state.refFile, "reference.jpg");
+      var resp = await fetch(ENDPOINT, { method: "POST", body: fd });
+      if (!resp.ok) { var m = resp.status + " " + resp.statusText; try { var j = await resp.json(); if (j && j.detail) m = j.detail; } catch (e) {} throw new Error(m); }
+      var blob = await resp.blob();
+      var got = await loadBlobToImg(blob);
+      var cv = imgToCanvas(got.img); URL.revokeObjectURL(got.url);
+      if (state.bgMode === "chroma") { try { cv = ChromaKey.process(cv, { tolerance: state.chromaTol / 100 }).canvas; } catch (e) {} }
+      var bb = contentBBox(cv);
+      var content = bb ? cropToCanvas(cv, bb.x, bb.y, bb.w, bb.h) : cv;
+      var fit = state.fitMode === "square" ? fitInto(content, SQUARE, SQUARE, state.pad, true) : fitInto(content, ST_MAX_W, ST_MAX_H, state.pad, false);
+      if (state.titleMode === "overlay" && entry.title) overlayTitle(fit.canvas, entry.title);
+      var outBlob = await canvasToBlob(fit.canvas, "image/png");
+      return { blob: outBlob, w: fit.w, h: fit.h, url: URL.createObjectURL(outBlob), content: content };
+    }
+
+    async function generateAll() {
+      if (state.busy) return;
+      if (!currentKey()) { showError("請先填入 " + (state.provider === "openai" ? "OpenAI" : "Google") + " 的 API key。"); return; }
+      if (!state.entries.length) { showError("請至少加一條表情。"); return; }
+      if (typeof JSZip === "undefined") { showError("打包元件（JSZip）載入失敗，請檢查網路後重新整理。"); return; }
+      var n = state.entries.length;
+      state.busy = true; hideMessages(); syncControls();
+      showProgress("生成中"); setProgress(0, "0 / " + n);
+      var items = [], firstContent = null, fails = 0;
+      for (var i = 0; i < n; i++) {
+        var entry = state.entries[i], name = pad2(i + 1) + ".png";
+        els.progressStatus.textContent = i + " / " + n + "　" + entry.desc;
+        try {
+          var r = await generateOne(entry);
+          items.push({ name: name, blob: r.blob, w: r.w, h: r.h, url: r.url, error: null });
+          if (firstContent === null) firstContent = r.content;
+        } catch (e) {
+          items.push({ name: name, blob: null, w: 0, h: 0, url: null, error: String((e && e.message) || e).slice(0, 90) });
+          fails++;
+        }
+        setProgress((i + 1) / n * 100, (i + 1) + " / " + n);
+        await new Promise(function (res) { setTimeout(res, 0); });
+      }
+      var main = null, tab = null;
+      if (firstContent) {
+        var mb = await canvasToBlob(makeFixed(firstContent, MAIN, MAIN), "image/png");
+        var tb = await canvasToBlob(makeFixed(firstContent, TAB_W, TAB_H), "image/png");
+        main = { blob: mb, url: URL.createObjectURL(mb) }; tab = { blob: tb, url: URL.createObjectURL(tb) };
+      }
+      state.results = { items: items, main: main, tab: tab, firstContent: firstContent };
+      renderResults();
+      setProgress(100, "完成"); setTimeout(hideProgress, 600);
+      state.busy = false; syncControls();
+      var ok = n - fails;
+      if (ok && !fails) showSuccess("已生成 " + ok + " 張貼圖。可「重生這張」修不滿意的，再下載 ZIP。");
+      else if (ok && fails) showError(ok + " 張成功、" + fails + " 張失敗（見清單）。可對失敗的按「重生這張」。");
+      else showError("全部生成失敗 —— 多半是 API key 或模型 ID 不對、額度不足，或服務不支援生圖。");
+    }
+
+    async function regenOne(idx) {
+      if (state.busy || !state.results || idx < 0 || idx >= state.entries.length) return;
+      if (!currentKey()) { showError("請先填入 API key。"); return; }
+      state.busy = true; hideMessages(); syncControls(); showProgress("重生第 " + (idx + 1) + " 張");
+      try {
+        var r = await generateOne(state.entries[idx]);
+        var old = state.results.items[idx];
+        if (old && old.url) URL.revokeObjectURL(old.url);
+        state.results.items[idx] = { name: pad2(idx + 1) + ".png", blob: r.blob, w: r.w, h: r.h, url: r.url, error: null };
+        if (!state.results.firstContent) { state.results.firstContent = r.content; var mb = await canvasToBlob(makeFixed(r.content, MAIN, MAIN), "image/png"); var tb = await canvasToBlob(makeFixed(r.content, TAB_W, TAB_H), "image/png"); state.results.main = { blob: mb, url: URL.createObjectURL(mb) }; state.results.tab = { blob: tb, url: URL.createObjectURL(tb) }; }
+        showSuccess("第 " + (idx + 1) + " 張已重生。");
+      } catch (e) {
+        if (state.results.items[idx]) state.results.items[idx].error = String((e && e.message) || e).slice(0, 90);
+        showError("重生失敗：" + String((e && e.message) || e).slice(0, 120));
+      } finally { renderResults(); hideProgress(); state.busy = false; syncControls(); }
+    }
+
+    function renderResults() {
+      var r = state.results; if (!r) return;
+      els.previewEmpty.hidden = true; els.resultPanel.hidden = false;
+      els.specialHolder.replaceChildren();
+      if (r.main && r.tab) {
+        function fig(url, cap) { var f = el("figure"); var fr = el("span", "frame checker"); var im = el("img"); im.src = url; im.alt = cap; fr.appendChild(im); f.appendChild(fr); f.appendChild(el("figcaption", null, cap)); return f; }
+        els.specialHolder.append(fig(r.main.url, "main.png · " + MAIN + "×" + MAIN + " · " + fmtSize(r.main.blob.size)), fig(r.tab.url, "tab.png · " + TAB_W + "×" + TAB_H + " · " + fmtSize(r.tab.blob.size)));
+      } else { els.specialHolder.appendChild(el("p", "hint-line", "（沒有成功的貼圖，main / tab 還沒生成）")); }
+      els.resultGrid.replaceChildren();
+      r.items.forEach(function (s, i) {
+        var fig = el("figure", "ai-cell"), fr = el("span", "frame checker");
+        if (s.url) { var im = el("img"); im.src = s.url; im.alt = s.name; fr.appendChild(im); }
+        else { var ph = el("div", null, "失敗"); ph.style.padding = "var(--space-6) 0"; ph.style.color = "var(--error)"; ph.style.fontSize = "13px"; fr.appendChild(ph); }
+        fig.appendChild(fr);
+        var cap = el("figcaption");
+        if (s.blob) cap.appendChild(document.createTextNode(s.name + " · " + s.w + "×" + s.h + " · " + fmtSize(s.blob.size)));
+        else { cap.appendChild(document.createTextNode(s.name + " ")); cap.appendChild(el("span", "err", "· " + (s.error || "失敗"))); }
+        fig.appendChild(cap);
+        var rb = el("button", "btn btn--ghost", "重生這張"); rb.type = "button";
+        rb.addEventListener("click", function () { regenOne(i); });
+        fig.appendChild(rb);
+        els.resultGrid.appendChild(fig);
+      });
+      var done = r.items.filter(function (s) { return s.blob; }).length;
+      els.resultSummary.textContent = done + " / " + r.items.length + " 張";
+      els.zipBtn.disabled = state.busy || done === 0;
+    }
+
+    async function downloadZip() {
+      var r = state.results; if (!r || state.busy) return;
+      if (typeof JSZip === "undefined") { showError("打包元件載入失敗。"); return; }
+      state.busy = true; syncControls();
+      try {
+        var zip = new JSZip();
+        if (r.main) zip.file("main.png", r.main.blob);
+        r.items.forEach(function (s) { if (s.blob) zip.file(s.name, s.blob); });
+        if (r.tab) zip.file("tab.png", r.tab.blob);
+        var content = await zip.generateAsync({ type: "blob", compression: "STORE" });
+        triggerDownload(content, "ai-line-stickers.zip");
+      } catch (e) { showError("打包失敗：" + ((e && e.message) || e)); }
+      state.busy = false; syncControls();
+    }
+
+    // ---------- 計畫提示 / 同步 ----------
+    function refreshPlanNote() {
+      var n = state.entries.length;
+      els.planNote.textContent = "目前設定：" + n + " 張、" + ({ openai: "OpenAI", google: "Google " + currentModel() })[state.provider] + (state.refFile ? "、有參考圖" : "、純文字生成") + "。";
+      els.refPreviewHolder.replaceChildren();
+      if (state.refURL) { var d = el("div", "ai-ref-preview"); var im = el("img"); im.src = state.refURL; im.alt = "參考圖"; d.appendChild(im); els.refPreviewHolder.appendChild(d); }
+    }
+    function syncProviderPane() {
+      els.paneOpenai.classList.toggle("is-active", state.provider === "openai");
+      els.paneGoogle.classList.toggle("is-active", state.provider === "google");
+    }
+    function syncModelCustom() {
+      els.openaiModelCustom.hidden = els.openaiModel.value !== "__custom__";
+      els.googleModelCustom.hidden = els.googleModel.value !== "__custom__";
+    }
+    function syncControls() {
+      var n = state.entries.length, hasKey = !!currentKey();
+      els.goBtn.disabled = state.busy || !hasKey || n === 0;
+      els.goBtn.textContent = state.busy ? "生成中…" : !hasKey ? ("先填 " + (state.provider === "openai" ? "OpenAI" : "Google") + " API key") : ("開始生成（" + n + " 張）");
+      els.zipBtn.disabled = state.busy || !state.results || state.results.items.filter(function (s) { return s.blob; }).length === 0;
+      els.chromaRow.style.opacity = state.bgMode === "chroma" ? "1" : "0.5";
+      els.chromaRow.style.pointerEvents = state.bgMode === "chroma" ? "auto" : "none";
+      els.chromaSlider.disabled = state.bgMode !== "chroma" || state.busy;
+      els.padSlider.disabled = state.busy;
+      els.addEntryBtn.disabled = state.busy || n >= MAX_ENTRIES;
+      [els.styleSeg, els.titleSeg, els.providerSeg, els.bgSeg, els.fitSeg].forEach(function (seg) { seg.querySelectorAll(".segmented__btn").forEach(function (b) { b.disabled = state.busy; }); });
+    }
+
+    // ---------- events ----------
+    els.dropzone.addEventListener("click", function () { els.fileInput.click(); });
+    els.dropzone.addEventListener("dragover", function (e) { e.preventDefault(); els.dropzone.classList.add("is-dragover"); });
+    els.dropzone.addEventListener("dragleave", function (e) { e.preventDefault(); els.dropzone.classList.remove("is-dragover"); });
+    els.dropzone.addEventListener("drop", function (e) { e.preventDefault(); els.dropzone.classList.remove("is-dragover"); if (e.dataTransfer.files.length) loadRefFile(e.dataTransfer.files[0]); });
+    els.fileInput.addEventListener("change", function (e) { if (e.target.files.length) { var f = e.target.files[0]; e.target.value = ""; loadRefFile(f); } });
+
+    els.styleSeg.querySelectorAll(".segmented__btn").forEach(function (b) { b.addEventListener("click", function () { if (state.busy) return; state.style = b.getAttribute("data-style"); els.styleSeg.querySelectorAll(".segmented__btn").forEach(function (x) { x.setAttribute("aria-pressed", x === b ? "true" : "false"); }); }); });
+    els.titleSeg.querySelectorAll(".segmented__btn").forEach(function (b) { b.addEventListener("click", function () { if (state.busy) return; state.titleMode = b.getAttribute("data-title"); els.titleSeg.querySelectorAll(".segmented__btn").forEach(function (x) { x.setAttribute("aria-pressed", x === b ? "true" : "false"); }); }); });
+    els.providerSeg.querySelectorAll(".segmented__btn").forEach(function (b) { b.addEventListener("click", function () { if (state.busy) return; state.provider = b.getAttribute("data-provider"); els.providerSeg.querySelectorAll(".segmented__btn").forEach(function (x) { x.setAttribute("aria-pressed", x === b ? "true" : "false"); }); syncProviderPane(); refreshPlanNote(); syncControls(); }); });
+    els.bgSeg.querySelectorAll(".segmented__btn").forEach(function (b) { b.addEventListener("click", function () { if (state.busy) return; state.bgMode = b.getAttribute("data-bg"); els.bgSeg.querySelectorAll(".segmented__btn").forEach(function (x) { x.setAttribute("aria-pressed", x === b ? "true" : "false"); }); syncControls(); }); });
+    els.fitSeg.querySelectorAll(".segmented__btn").forEach(function (b) { b.addEventListener("click", function () { if (state.busy) return; state.fitMode = b.getAttribute("data-fit"); els.fitSeg.querySelectorAll(".segmented__btn").forEach(function (x) { x.setAttribute("aria-pressed", x === b ? "true" : "false"); }); }); });
+
+    els.chromaSlider.addEventListener("input", function () { state.chromaTol = parseInt(els.chromaSlider.value, 10); els.chromaVal.textContent = state.chromaTol; });
+    els.padSlider.addEventListener("input", function () { state.pad = parseInt(els.padSlider.value, 10); els.padVal.textContent = state.pad; });
+    els.styleExtra.addEventListener("input", function () {});
+    els.addEntryBtn.addEventListener("click", function () { if (state.busy || state.entries.length >= MAX_ENTRIES) return; state.entries.push({ desc: "", title: "" }); renderEntries(); updateCountStatus(); refreshPlanNote(); syncControls(); });
+
+    els.openaiModel.addEventListener("change", function () { syncModelCustom(); refreshPlanNote(); });
+    els.googleModel.addEventListener("change", function () { syncModelCustom(); refreshPlanNote(); });
+    els.openaiModelCustom.addEventListener("input", refreshPlanNote);
+    els.googleModelCustom.addEventListener("input", refreshPlanNote);
+    els.openaiKey.addEventListener("input", function () { lsSet(KEYS_LS.openai, els.openaiKey.value.trim()); syncControls(); });
+    els.googleKey.addEventListener("input", function () { lsSet(KEYS_LS.google, els.googleKey.value.trim()); syncControls(); });
+    els.openaiKeyClear.addEventListener("click", function () { els.openaiKey.value = ""; lsSet(KEYS_LS.openai, ""); syncControls(); });
+    els.googleKeyClear.addEventListener("click", function () { els.googleKey.value = ""; lsSet(KEYS_LS.google, ""); syncControls(); });
+
+    els.goBtn.addEventListener("click", generateAll);
+    els.zipBtn.addEventListener("click", downloadZip);
+
+    // ---------- init ----------
+    els.openaiKey.value = lsGet(KEYS_LS.openai);
+    els.googleKey.value = lsGet(KEYS_LS.google);
+    renderEntries(); updateCountStatus(); syncProviderPane(); syncModelCustom(); refreshPlanNote(); syncControls();
+  })();
+  </script>
+</body>
+</html>
