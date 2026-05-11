@@ -144,8 +144,8 @@
               <div>
                 <span class="field-label">模型</span>
                 <select class="text-field" id="openaiModel">
-                  <option value="gpt-image-2" selected>GPT Image 2（最新）</option>
-                  <option value="gpt-image-2-2026-04-21">gpt-image-2-2026-04-21（快照）</option>
+                  <option value="gpt-image-2" selected>GPT Image 2（最新，需先驗證組織）</option>
+                  <option value="gpt-image-2-2026-04-21">gpt-image-2-2026-04-21（快照，需先驗證組織）</option>
                   <option value="gpt-image-1.5">gpt-image-1.5</option>
                   <option value="gpt-image-1">gpt-image-1（最穩定）</option>
                   <option value="__custom__">自訂…</option>
@@ -176,7 +176,7 @@
 
           <p class="hint-line" id="keyStatus" style="margin-top:var(--space-3)"></p>
           <button type="button" class="btn btn--ghost" id="openSettingsBtn" style="margin-top:var(--space-2);padding:6px 12px;font-size:13px">到「設定」填 / 改 API key</button>
-          <p class="hint-line" style="margin-top:var(--space-2)">API key 在站台「設定」面板統一管（右上齒輪），只存在你的瀏覽器；請求時經本站薄 proxy 轉給 AI 服務、用完即丟、不留存。生圖要錢、用你自己的 key —— 一組 8~24 張視模型 / 品質約 US$0.3~5。OpenAI 的 <code style="font-family:var(--font-mono)">gpt-image-2</code> 可能還在限量釋出 / 需組織驗證 —— 若不能用，改用 <code style="font-family:var(--font-mono)">gpt-image-1</code>（下方結果某張失敗時會顯示原因）。</p>
+          <p class="hint-line" style="margin-top:var(--space-2)">API key 在站台「設定」面板統一管（右上齒輪），只存在你的瀏覽器；請求時經本站薄 proxy 轉給 AI 服務、用完即丟、不留存。生圖要錢、用你自己的 key —— 一組 8~24 張視模型 / 品質約 US$0.3~5。OpenAI 的 <code style="font-family:var(--font-mono)">gpt-image-2</code> / 快照版需先到 OpenAI 後台驗證組織才能用（<code style="font-family:var(--font-mono)">platform.openai.com/settings/organization/general</code> →「Verify Organization」，身分驗證、幾分鐘生效）；不想驗證就選 <code style="font-family:var(--font-mono)">gpt-image-1</code>，或改用 Google。</p>
         </div>
 
         <div class="section">
