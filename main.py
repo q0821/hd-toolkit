@@ -1,4 +1,4 @@
-"""web-toolbox — 前端小工具聚合站
+"""hd-toolkit — 前端小工具聚合站
 
 首頁是工具選單，每個工具一個頁面。FastAPI 負責提供靜態頁與少數需要後端的 API
 （目前只有 pdf2jpg；圖片切片等工具是純前端）。
@@ -16,7 +16,7 @@ BASE_DIR = Path(__file__).parent
 STATIC_DIR = BASE_DIR / "static"
 
 app = FastAPI(
-    title="web-toolbox",
+    title="hd-toolkit",
     description="前端小工具聚合站",
     version="2.0.0",
 )

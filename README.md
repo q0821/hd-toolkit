@@ -1,4 +1,4 @@
-# HD 的工具箱（web-toolbox）
+# HD 的工具箱（hd-toolkit）
 
 一個前端小工具的聚合站。首頁是工具選單，每個工具一個頁面，陸續增加。
 能在瀏覽器裡做完的工具就不上傳檔案；只有需要伺服器的工具（目前是 PDF to JPG）才會送到後端，轉完即丟、不留存。
@@ -20,7 +20,7 @@
 ## 目錄結構
 
 ```
-web-toolbox/
+hd-toolkit/
 ├── main.py                     # FastAPI app：掛 router、掛靜態目錄、工具頁面路由
 ├── requirements.txt
 ├── Dockerfile                  # python:3.11-slim + poppler-utils，跑在 8080
@@ -95,8 +95,8 @@ curl -X POST "http://localhost:8000/api/pdf2jpg/convert" \
 `Dockerfile` 已含 poppler，容器跑在 8080：
 
 ```bash
-docker build -t web-toolbox .
-docker run -p 8080:8080 web-toolbox
+docker build -t hd-toolkit .
+docker run -p 8080:8080 hd-toolkit
 ```
 
 Zeabur 直接連這個 repo 即可，會自動用根目錄的 `Dockerfile`。

@@ -1,4 +1,4 @@
-# 實作計畫：web-toolbox（前端小工具聚合）
+# 實作計畫：hd-toolkit（前端小工具聚合）
 
 ## 背景
 
@@ -7,12 +7,12 @@
 - `pdf2jpg` 成為其中一個工具，並**改套用新的統一風格**
 - 新增「圖片切片工具」（上傳圖片 → 選欄數/列數 → 下載 ZIP），**純前端實作**（Canvas + JSZip）
 - 全站統一一套設計系統（深色 + 螢光黃綠 accent + 等寬字技術風，依使用者提供的參考稿）
-- Repo 改名為 `web-toolbox`（保留 git 歷史，不開新 repo）
+- Repo 改名為 `hd-toolkit`（保留 git 歷史，不開新 repo）
 
 ## 目標架構
 
 ```
-web-toolbox/
+hd-toolkit/
 ├── main.py                      # FastAPI：掛 router + 靜態目錄 + 工具頁面路由
 ├── requirements.txt             # 不變（純前端工具不需新增後端依賴）
 ├── Dockerfile                   # 不變（poppler 仍給 pdf2jpg 用）
@@ -47,7 +47,7 @@ GET  /api/health
 
 ---
 
-## 設計系統 — web-toolbox 統一風格
+## 設計系統 — hd-toolkit 統一風格
 
 **完整規格見專案根目錄的 `DESIGN.md`（由 /design-consultation 產生），動任何 UI 之前先讀那份。** 摘要：
 
@@ -55,10 +55,10 @@ GET  /api/health
 - 顏色：**亮色＝溫暖紙質 / 淺木紋**（暖米底 `#f4ecdc` + 暖白卡片 `#fdf9ef` + 暖近黑文字 `#2b241a`）、**暗色＝深木紋 / 胡桃木**（深暖棕底 `#231a11` + 上層木色卡片 `#2e2417` + 暖米白文字 `#ede3cf`）；單一 **暖琥珀 accent**（亮 `#b45309` / 暗 `#f59e0b`）；error 用純紅、warning 用偏橘以和 accent 拉開
 - 字體（Google Fonts）：**Space Grotesk**（顯示 / 工具名 / 大標）+ **IBM Plex Sans**（內文 / 介面）+ **IBM Plex Mono**（檔名 / px / kbd / 技術數值）
 - **亮 / 暗雙模式**：`:root` 亮、`html[data-theme="dark"]` 覆寫；預設跟 `prefers-color-scheme`，使用者切換後寫 `localStorage('toolbox-theme')`；切換鈕在 header（太陽 / 月亮 SVG）；尊重 `prefers-reduced-motion`
-- 共用元件（進 `static/shared/app.css`，三個工具頁 + 首頁共用）：`.app-shell` / `.app-header`（含 `web-toolbox` 字標、breadcrumb 工具名、`.theme-toggle`）/ `.app-footer` / `.tool-layout` `.tool-controls` `.tool-preview`（左右分割）/ `.section-label` / `.dropzone` / `.stepper` / `.segmented` / `.range` / `.text-field` / `.btn-primary` `.btn-secondary` `.btn-ghost` / `.message`（error / success）/ `.progress` / `.tool-card`（首頁卡片）/ `.chip` / `.preview-empty`
+- 共用元件（進 `static/shared/app.css`，三個工具頁 + 首頁共用）：`.app-shell` / `.app-header`（含 `hd-toolkit` 字標、breadcrumb 工具名、`.theme-toggle`）/ `.app-footer` / `.tool-layout` `.tool-controls` `.tool-preview`（左右分割）/ `.section-label` / `.dropzone` / `.stepper` / `.segmented` / `.range` / `.text-field` / `.btn-primary` `.btn-secondary` `.btn-ghost` / `.message`（error / success）/ `.progress` / `.tool-card`（首頁卡片）/ `.chip` / `.preview-empty`
 - 圖示：一律 inline SVG 線條圖（`stroke="currentColor"`、`stroke-width="1.5"`、20–24px，Lucide / Feather 風格）
 - **不使用 Emoji**；中英文之間留半形空白；無 CSS 框架；不寫 `transition: all`
-- 視覺預覽：`/design-consultation` 已產一個 HTML preview 頁（在 `/tmp/web-toolbox-design-preview-*.html`，可刪），實作 `app.css` 時以它與 `DESIGN.md` 為準
+- 視覺預覽：`/design-consultation` 已產一個 HTML preview 頁（在 `/tmp/hd-toolkit-design-preview-*.html`，可刪），實作 `app.css` 時以它與 `DESIGN.md` 為準
 
 ---
 
@@ -86,7 +86,7 @@ GET  /api/health
 ## 階段 2：套用統一風格（首頁選單 + pdf2jpg 改皮）
 **目標**：把設計系統完整落地，首頁與 pdf2jpg 都長成新風格
 - 完成 `static/shared/app.css` 全部共用元件（dropzone、stepper、segmented、range、text-field、section-label、preview-empty…）
-- 首頁 `static/index.html`：深色、`.app-header`（站名 web-toolbox）、工具卡片 grid（每張：SVG icon、工具名（等寬）、一句說明（灰字）、整張可點連 `/<slug>`、hover → `--accent` 邊框 + 微上移），目前 2 張卡：PDF to JPG、圖片切片工具（後者連 `/image-slicer`，頁面階段 3 完成）；響應式（手機單欄）
+- 首頁 `static/index.html`：深色、`.app-header`（站名 hd-toolkit）、工具卡片 grid（每張：SVG icon、工具名（等寬）、一句說明（灰字）、整張可點連 `/<slug>`、hover → `--accent` 邊框 + 微上移），目前 2 張卡：PDF to JPG、圖片切片工具（後者連 `/image-slicer`，頁面階段 3 完成）；響應式（手機單欄）
 - `static/pdf2jpg/index.html` 改皮：改用 `.app-header`（含「← 回工具箱」）、編號分節（`01 / 上傳 PDF`、`02 / 解析度 (DPI)`、`03 / JPG 品質`）、滑桿改 `.range`、按鈕改 `.btn-primary`（文案「轉換並下載」）、訊息區改 `.message`、移除原和紙質感樣式與 Playfair Display；功能與 API 呼叫不動
 - 移除舊 inline `<style>` 中已被 `app.css` 取代的部分
 
@@ -148,10 +148,10 @@ GET  /api/health
 
 ## 階段 4：收尾與改名
 **目標**：文件對齊、Repo 改名
-- 改寫 `README.md`：站名 web-toolbox、工具列表與各工具說明、設計風格說明、本機啟動、技術棧（後端 FastAPI 僅 pdf2jpg 用，其餘純前端）、Docker/Zeabur 部署
+- 改寫 `README.md`：站名 hd-toolkit、工具列表與各工具說明、設計風格說明、本機啟動、技術棧（後端 FastAPI 僅 pdf2jpg 用，其餘純前端）、Docker/Zeabur 部署
 - 確認 `Dockerfile`（`COPY . .` 會帶 `app/` 與 `static/` 全子目錄，無需改）
 - 確認 `.dockerignore` / `.gitignore` 不漏新目錄
-- GitHub repo 改名 `pdf2jpg` → `web-toolbox`（GitHub Settings 改名，舊網址自動 redirect）
+- GitHub repo 改名 `pdf2jpg` → `hd-toolkit`（GitHub Settings 改名，舊網址自動 redirect）
 - 本機 `git remote set-url origin <新網址>`；（可選）本機資料夾改名
 - Zeabur：服務名與 repo 名無強綁定，重新連結或確認 webhook 仍有效
 - 全部驗證通過後刪除本 `IMPLEMENTATION_PLAN.md`
@@ -162,10 +162,10 @@ GET  /api/health
 - GitHub repo 新名稱生效、本機 `git push` 正常
 
 **測試**：
-- `docker build -t web-toolbox . && docker run -p 8080:8080 web-toolbox`，瀏覽器測三頁
+- `docker build -t hd-toolkit . && docker run -p 8080:8080 hd-toolkit`，瀏覽器測三頁
 - `git push` 確認 remote 正常
 
-**狀態**：完成（README 改寫成「HD 的工具箱」；`.dockerignore` 補上 DESIGN.md / CLAUDE.md / IMPLEMENTATION_PLAN.md；GitHub repo 已改名 `q0821/pdf2jpg` → `q0821/web-toolbox`，`gh` 已自動更新本機 `origin`）。**未做**：本機資料夾改名（可選，會打斷工作目錄，先不動）；`docker build` 實測（本機未跑）。**待辦**：① 使用者實機驗證圖片切片三種格式 ② 確認 Zeabur 部署仍正常（repo 改名後 GitHub 有 redirect，Zeabur 通常會跟著；若沒跟到就在 Zeabur 重新連結 repo）③ 全部 OK 後可刪除本 `IMPLEMENTATION_PLAN.md`
+**狀態**：完成（README 改寫成「HD 的工具箱」；`.dockerignore` 補上 DESIGN.md / CLAUDE.md / IMPLEMENTATION_PLAN.md；GitHub repo 已改名 `q0821/pdf2jpg` → `q0821/hd-toolkit`，`gh` 已自動更新本機 `origin`）。**未做**：本機資料夾改名（可選，會打斷工作目錄，先不動）；`docker build` 實測（本機未跑）。**待辦**：① 使用者實機驗證圖片切片三種格式 ② 確認 Zeabur 部署仍正常（repo 改名後 GitHub 有 redirect，Zeabur 通常會跟著；若沒跟到就在 Zeabur 重新連結 repo）③ 全部 OK 後可刪除本 `IMPLEMENTATION_PLAN.md`
 
 ---
 
@@ -177,5 +177,5 @@ GET  /api/health
 - **工具清單先寫死**：工具數量少，不做動態註冊機制（避免過早抽象）；超過 5～6 個再考慮抽 config
 - **舊 API 路徑相容**：`/api/convert` 保留為別名（`include_in_schema=False`），註記預計移除版本
 - **不使用 Emoji**：UI 一律 inline SVG icon（含參考稿裡的 🖼️ / ✂️）
-- **網站顯示名稱 = 「HD 的工具箱」**（header 字標、`<title>`、footer、首頁 hero 都用這個）；`web-toolbox` 只當 repo / 資料夾代號
+- **網站顯示名稱 = 「HD 的工具箱」**（header 字標、`<title>`、footer、首頁 hero 都用這個）；`hd-toolkit` 只當 repo / 資料夾代號
 - **JSZip 走 CDN**（cdnjs `jszip@3.10.1`，`crossorigin` 無 SRI）；圖片切片若 JSZip 載入失敗會用 `.message--error` 提示。日後若想離線可用，可改 vendor 到 `static/shared/vendor/jszip.min.js`

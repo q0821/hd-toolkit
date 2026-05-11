@@ -1,4 +1,4 @@
-/* web-toolbox — 亮 / 暗模式切換
+/* hd-toolkit — 亮 / 暗模式切換
  * 放在 <head> 同步執行以避免閃爍：先依 localStorage / 系統偏好設定 data-theme，
  * DOMContentLoaded 後再綁定 header 的切換鈕（id="themeToggle"）。
  */

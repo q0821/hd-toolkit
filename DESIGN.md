@@ -1,10 +1,10 @@
-# Design System — web-toolbox
+# Design System — hd-toolkit
 
 > 全站唯一的設計依據。動任何視覺 / UI 之前先讀這份。字體、顏色、間距、版面、動態都定義在這裡。沒有使用者明確同意不要偏離。
 
 ## Product Context
 - **What this is:** 前端小工具聚合站。首頁是工具選單，每個工具一個頁面。目前有 PDF to JPG、圖片切片工具，未來持續新增。
-- **顯示名稱:** 「HD 的工具箱」（header 字標、頁面 `<title>`、footer、首頁 hero 均使用）；`web-toolbox` 僅作 repo / 資料夾代號。
+- **顯示名稱:** 「HD 的工具箱」（header 字標、頁面 `<title>`、footer、首頁 hero 均使用）；`hd-toolkit` 僅作 repo / 資料夾代號。
 - **Who it's for:** 需要快速完成單一檔案 / 圖片處理的人；偏技術但也給一般使用者。
 - **Space/industry:** 開發者 / 通用線上工具（同類：it-tools、10015.io、transform.tools、omatsuri）。
 - **Project type:** 多工具靜態網站（FastAPI 提供靜態頁；圖片切片等工具純前端，pdf2jpg 走後端 API）。
@@ -92,7 +92,7 @@
 - **Approach:** grid-disciplined（嚴格欄、可預期對齊）；只有預覽區允許自由比例。
 - **Max content width:** 首頁卡片牆 `1040px`；單欄工具頁卡片 `560px`；左右分割工具頁不設總寬上限，但控制欄固定 `clamp(380px, 32vw, 480px)`。
 - **首頁卡片牆:** 1 欄（< 640px）/ 2 欄（640–959px）/ 3 欄（≥ 960px），`gap: var(--space-4)`。
-- **工具頁 header:** sticky、底部 `1px var(--border)`；左：`web-toolbox` 字標（Space Grotesk 600，連回 `/`）+ `/` + 目前工具名（`--text-muted`）；右：亮/暗切換鈕。
+- **工具頁 header:** sticky、底部 `1px var(--border)`；左：「HD 的工具箱」字標（Space Grotesk 600，連回 `/`）+ `/` + 目前工具名（`--text-muted`）；右：亮/暗切換鈕。
 - **左右分割工具頁:** `display:flex`；左 `.tool-controls`（固定寬，內距 `--space-6`）；中 `1px var(--border)` 直線；右 `.tool-preview`（flex:1，置中內容）。`< 880px` 改 `flex-direction:column`，分隔線改水平。
 - **Border radius（階層化，禁止全部一樣的 bubbly）:** `--radius-sm:8px`（按鈕、輸入框、步進器、方形 chip）/ `--radius-md:12px`（卡片、面板、拖放區）/ `--radius-lg:16px`（大容器）/ `--radius-full:9999px`（pill、avatar、圓 chip）
 
@@ -133,6 +133,6 @@
 ## Decisions Log
 | Date | Decision | Rationale |
 |------|----------|-----------|
-| 2026-05-11 | 建立 web-toolbox 設計系統（Quiet Utility，暖琥珀 accent，Space Grotesk + IBM Plex Sans + IBM Plex Mono，亮/暗雙模式，無 Emoji） | 由 /design-consultation 產出；定位為「安靜的工具感」，刻意避開同類站的 Inter+藍+卡片預設長相 |
+| 2026-05-11 | 建立 hd-toolkit 設計系統（Quiet Utility，暖琥珀 accent，Space Grotesk + IBM Plex Sans + IBM Plex Mono，亮/暗雙模式，無 Emoji） | 由 /design-consultation 產出；定位為「安靜的工具感」，刻意避開同類站的 Inter+藍+卡片預設長相 |
 | 2026-05-11 | 沿用並收斂 pdf2jpg 既有的暖色調傾向，但改用暖琥珀而非原本的 vermillion | 暖琥珀和 error 紅完全不撞色、亮暗模式都穩；vermillion 與 error 紅太接近 |
 | 2026-05-11 | 亮色＝溫暖紙質 / 淺木紋（暖米底 `#f4ecdc` + 暖白卡片 `#fdf9ef` + 暖近黑文字 `#2b241a`），暗色＝深木紋 / 胡桃木（深暖棕底 `#231a11` + 上層木色卡片 `#2e2417` + 暖米白文字 `#ede3cf`），都不用冷白 / 冷灰 / 冷藍黑 | 使用者個人偏好；雖是工具站但希望有手感、溫暖。暖琥珀 accent 在紙上像印泥、在深木上像黃銅刻字，兩態都相襯 |

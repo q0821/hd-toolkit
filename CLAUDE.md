@@ -1,4 +1,4 @@
-# web-toolbox
+# hd-toolkit
 
 前端小工具聚合站。首頁是工具選單，每個工具一個頁面。FastAPI 提供靜態頁；圖片切片等工具純前端，pdf2jpg 走後端 API。
 
