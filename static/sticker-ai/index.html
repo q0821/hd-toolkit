@@ -327,6 +327,31 @@
       if (maxX < 0) return null;
       return { x: minX, y: minY, w: maxX - minX + 1, h: maxY - minY + 1 };
     }
+    // 去背後常會留零星半透明小點（綠底不夠均勻 / 鋸齒）—— 把 alpha mask 做 4-連通元件，
+    // 只留最大塊 + 面積 >= 0.3% 影像的塊，其餘 alpha 歸零；不然外框會被小點撐大、貼圖縮小歪掉
+    function cleanAlphaMask(imageData) {
+      var d = imageData.data, w = imageData.width, h = imageData.height, n = w * h, FG = 16;
+      var label = new Int32Array(n);
+      for (var i = 0; i < n; i++) label[i] = (d[i * 4 + 3] < FG) ? 0 : -1;
+      var stack = new Int32Array(n), comps = [0], cur = 0;
+      for (var p = 0; p < n; p++) {
+        if (label[p] !== -1) continue;
+        cur++; var area = 0, sp = 0; stack[sp++] = p; label[p] = cur;
+        while (sp > 0) {
+          var q = stack[--sp]; area++; var x = q % w, y = (q / w) | 0;
+          if (x > 0 && label[q - 1] === -1) { label[q - 1] = cur; stack[sp++] = q - 1; }
+          if (x < w - 1 && label[q + 1] === -1) { label[q + 1] = cur; stack[sp++] = q + 1; }
+          if (y > 0 && label[q - w] === -1) { label[q - w] = cur; stack[sp++] = q - w; }
+          if (y < h - 1 && label[q + w] === -1) { label[q + w] = cur; stack[sp++] = q + w; }
+        }
+        comps.push(area);
+      }
+      if (cur === 0) return;
+      var maxK = 1; for (var k = 2; k <= cur; k++) if (comps[k] > comps[maxK]) maxK = k;
+      var minArea = Math.max(1, Math.floor(n * 0.003)), keep = new Uint8Array(cur + 1);
+      for (var k2 = 1; k2 <= cur; k2++) keep[k2] = (k2 === maxK || comps[k2] >= minArea) ? 1 : 0;
+      for (var j = 0; j < n; j++) { var L = label[j]; if (L > 0 && !keep[L]) d[j * 4 + 3] = 0; }
+    }
     function scaleCanvas(src, dw, dh) {
       var cur = src;
       while (cur.width / dw > 2 || cur.height / dh > 2) { var nw = Math.max(dw, Math.round(cur.width / 2)), nh = Math.max(dh, Math.round(cur.height / 2)); var t = newCanvas(nw, nh); t.getContext("2d").drawImage(cur, 0, 0, nw, nh); cur = t; }
@@ -442,7 +467,12 @@
       var blob = await resp.blob();
       var got = await loadBlobToImg(blob);
       var cv = imgToCanvas(got.img); URL.revokeObjectURL(got.url);
-      if (state.bgMode === "chroma") { try { cv = ChromaKey.process(cv, { tolerance: state.chromaTol / 100 }).canvas; } catch (e) {} }
+      if (state.bgMode === "chroma") {
+        try {
+          cv = ChromaKey.process(cv, { tolerance: state.chromaTol / 100 }).canvas;
+          if (cv.width * cv.height <= 16e6) { var cctx = cv.getContext("2d", { willReadFrequently: true }); var cid = cctx.getImageData(0, 0, cv.width, cv.height); cleanAlphaMask(cid); cctx.putImageData(cid, 0, 0); }
+        } catch (e) {}
+      }
       var bb = contentBBox(cv);
       var content = bb ? cropToCanvas(cv, bb.x, bb.y, bb.w, bb.h) : cv;
       var fit = state.fitMode === "square" ? fitInto(content, SQUARE, SQUARE, state.pad, true) : fitInto(content, ST_MAX_W, ST_MAX_H, state.pad, false);
