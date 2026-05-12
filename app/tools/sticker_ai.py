@@ -57,7 +57,13 @@ async def _call_openai(
             body["background"] = "transparent"
         resp = await client.post(OPENAI_GENERATIONS, headers={**headers, "Content-Type": "application/json"}, json=body)
     if resp.status_code >= 400:
-        raise HTTPException(status_code=resp.status_code if resp.status_code < 500 else 502, detail=_upstream_error(resp, "OpenAI"))
+        detail = _upstream_error(resp, "OpenAI")
+        low = detail.lower()
+        if resp.status_code == 400 and "transparent" in low:
+            detail += "（這個模型不支援透明背景 —— 改用「綠幕去背」背景模式，或把模型換成 gpt-image-1）"
+        elif resp.status_code == 403 and "verif" in low:
+            detail += "（到 OpenAI 後台 platform.openai.com/settings/organization/general 做組織驗證，或先用 gpt-image-1 / Google）"
+        raise HTTPException(status_code=resp.status_code if resp.status_code < 500 else 502, detail=detail)
     try:
         b64 = resp.json()["data"][0]["b64_json"]
     except Exception:

@@ -144,10 +144,10 @@
               <div>
                 <span class="field-label">模型</span>
                 <select class="text-field" id="openaiModel">
-                  <option value="gpt-image-2" selected>GPT Image 2（最新，需先驗證組織）</option>
-                  <option value="gpt-image-2-2026-04-21">gpt-image-2-2026-04-21（快照，需先驗證組織）</option>
-                  <option value="gpt-image-1.5">gpt-image-1.5</option>
-                  <option value="gpt-image-1">gpt-image-1（最穩定）</option>
+                  <option value="gpt-image-1.5" selected>gpt-image-1.5（支援透明、不需驗證組織）</option>
+                  <option value="gpt-image-1">gpt-image-1（最穩定、支援透明）</option>
+                  <option value="gpt-image-2">GPT Image 2（最新；需先驗證組織、不支援透明背景）</option>
+                  <option value="gpt-image-2-2026-04-21">gpt-image-2-2026-04-21（快照；同上）</option>
                   <option value="__custom__">自訂…</option>
                 </select>
               </div>
@@ -202,7 +202,7 @@
             <span class="field-label">四周留白</span>
             <div class="range-field"><input type="range" id="padSlider" min="0" max="40" value="10"><span class="range-field__val" id="padVal">10</span></div>
           </div>
-          <p class="hint-line">「綠幕去背」會請 AI 把主體畫在純綠底上、再用內建去背把綠去掉（跨服務最穩）。會用第 1 張生 <code style="font-family:var(--font-mono)">main.png</code>(240×240) / <code style="font-family:var(--font-mono)">tab.png</code>(96×74)。</p>
+          <p class="hint-line">「綠幕去背」會請 AI 把主體畫在純綠底上、再用內建去背把綠去掉（跨服務 / 跨模型最穩，推薦）。「模型透明」只有部分模型支援（OpenAI `gpt-image-1.5` / `gpt-image-1`、Gemini 等；**`gpt-image-2` 不支援、會被擋**）。會用第 1 張生 <code style="font-family:var(--font-mono)">main.png</code>(240×240) / <code style="font-family:var(--font-mono)">tab.png</code>(96×74)。</p>
         </div>
 
         <button type="button" class="btn btn--primary btn--block" id="goBtn" disabled>先填 API key</button>
@@ -401,7 +401,7 @@
 
     // ---------- 模型 / key ----------
     function currentModel() {
-      if (state.provider === "openai") { var v = els.openaiModel.value; return v === "__custom__" ? (els.openaiModelCustom.value.trim() || "gpt-image-2") : v; }
+      if (state.provider === "openai") { var v = els.openaiModel.value; return v === "__custom__" ? (els.openaiModelCustom.value.trim() || "gpt-image-1.5") : v; }
       var g = els.googleModel.value; return g === "__custom__" ? (els.googleModelCustom.value.trim() || "gemini-3-pro-image-preview") : g;
     }
     function currentKey() { return (window.Settings ? Settings.getKey(state.provider) : ""); }
@@ -456,6 +456,9 @@
       if (!currentKey()) { showError("請先填入 " + (state.provider === "openai" ? "OpenAI" : "Google") + " 的 API key。"); return; }
       if (!state.entries.length) { showError("請至少加一條表情。"); return; }
       if (typeof JSZip === "undefined") { showError("打包元件（JSZip）載入失敗，請檢查網路後重新整理。"); return; }
+      if (state.bgMode === "transparent" && state.provider === "openai" && currentModel().indexOf("gpt-image-2") === 0) {
+        showError("gpt-image-2 不支援透明背景。請把上面的「背景」改成「綠幕去背」，或把 OpenAI 模型換成 gpt-image-1.5 / gpt-image-1。"); return;
+      }
       var n = state.entries.length;
       state.busy = true; hideMessages(); syncControls();
       showProgress("生成中"); setProgress(0, "0 / " + n);
