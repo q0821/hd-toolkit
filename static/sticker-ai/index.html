@@ -256,7 +256,7 @@
     "use strict";
     var ENDPOINT = "/api/sticker-ai/generate";
     var ST_MAX_W = 370, ST_MAX_H = 320, SQUARE = 320, MAIN = 240, TAB_W = 96, TAB_H = 74;
-    var ALLOWED = [8, 16, 24], MAX_ENTRIES = 40, ALPHA_T = 12, REF_MAX = 1024;
+    var ALLOWED = [8, 16, 24], MAX_ENTRIES = 40, ALPHA_T = 24, REF_MAX = 1024;
     var STYLE_PROMPT = {
       sticker: "Die-cut sticker style: clean thick white outline around the subject, flat bright colors, simple cel shading, bold and cute.",
       handdraw: "Hand-drawn doodle style: loose ink linework, soft hand-painted fills, warm and friendly.",
@@ -351,6 +351,14 @@
       var minArea = Math.max(1, Math.floor(n * 0.003)), keep = new Uint8Array(cur + 1);
       for (var k2 = 1; k2 <= cur; k2++) keep[k2] = (k2 === maxK || comps[k2] >= minArea) ? 1 : 0;
       for (var j = 0; j < n; j++) { var L = label[j]; if (L > 0 && !keep[L]) d[j * 4 + 3] = 0; }
+    }
+    // 去背過的圖才呼叫：先把幾乎看不見的薄霧 / 雜訊 (alpha < 24) 歸零，再清孤立小點 —— 否則裁切外框會被撐歪
+    function tidyAlpha(canvas) {
+      var ctx = canvas.getContext("2d", { willReadFrequently: true });
+      var id = ctx.getImageData(0, 0, canvas.width, canvas.height), d = id.data;
+      for (var i = 3; i < d.length; i += 4) if (d[i] < 24) d[i] = 0;
+      cleanAlphaMask(id);
+      ctx.putImageData(id, 0, 0);
     }
     function scaleCanvas(src, dw, dh) {
       var cur = src;
@@ -467,12 +475,9 @@
       var blob = await resp.blob();
       var got = await loadBlobToImg(blob);
       var cv = imgToCanvas(got.img); URL.revokeObjectURL(got.url);
-      if (state.bgMode === "chroma") {
-        try {
-          cv = ChromaKey.process(cv, { tolerance: state.chromaTol / 100 }).canvas;
-          if (cv.width * cv.height <= 16e6) { var cctx = cv.getContext("2d", { willReadFrequently: true }); var cid = cctx.getImageData(0, 0, cv.width, cv.height); cleanAlphaMask(cid); cctx.putImageData(cid, 0, 0); }
-        } catch (e) {}
-      }
+      if (state.bgMode === "chroma") { try { cv = ChromaKey.process(cv, { tolerance: state.chromaTol / 100 }).canvas; } catch (e) {} }
+      // 只要有去背（綠幕 or 模型透明）就先清雜訊 / 碎屑，外框才不會被撐歪、貼圖才填得滿
+      if (state.bgMode !== "none" && cv.width * cv.height <= 16e6) { try { tidyAlpha(cv); } catch (e) {} }
       var bb = contentBBox(cv);
       var content = bb ? cropToCanvas(cv, bb.x, bb.y, bb.w, bb.h) : cv;
       var fit = state.fitMode === "square" ? fitInto(content, SQUARE, SQUARE, state.pad, true) : fitInto(content, ST_MAX_W, ST_MAX_H, state.pad, false);
