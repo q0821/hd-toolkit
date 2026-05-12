@@ -128,8 +128,9 @@
             <button type="button" class="segmented__btn" data-title="ai" aria-pressed="true">讓 AI 畫</button>
             <button type="button" class="segmented__btn" data-title="overlay" aria-pressed="false">疊在底部</button>
             <button type="button" class="segmented__btn" data-title="none" aria-pressed="false">不要文字</button>
+            <button type="button" class="segmented__btn" data-title="customarea" aria-pressed="false">留文字區</button>
           </div>
-          <p class="hint-line">「讓 AI 畫」= 請 AI 把每條的「標題」融進畫面、自己決定位置與風格（像對話氣泡或大標）；「疊在底部」= 本工具用 Canvas 在貼圖底部寫上（白邊黑字、固定位置、最穩）；「不要文字」= 整張不要任何字。</p>
+          <p class="hint-line">「讓 AI 畫」= 請 AI 把每條的「標題」融進畫面、自己決定位置與風格（像對話氣泡或大標）；「疊在底部」= 本工具用 Canvas 在貼圖底部寫上（白邊黑字、固定位置、最穩）；「不要文字」= 整張不要任何字；「留文字區」= 給 LINE【自訂貼圖】用 —— AI 不畫字，但留一塊空白（如對話框 / 牌子）給之後填字用（這模式下「標題」只是給 AI 估空間大小的參考；文字位置 / 字型 / 字數上限等仍要在 LINE Creators Market 後台的上架工具設定）。</p>
         </div>
 
         <div class="section">
@@ -452,10 +453,18 @@
       var extra = els.styleExtra.value.trim(); if (extra) p.push(extra);
       p.push("Single subject only, centered, full body or upper body, with generous empty padding around it. Expressive, clean composition.");
       var aiText = state.titleMode === "ai" && entry.title;
-      if (state.bgMode === "chroma") p.push("Put everything on a completely solid, uniform, flat green background, hex #00B140 (chroma key green) — no shadows, gradients, frames, or anything else behind " + (aiText ? "the character and the caption text" : "the character") + ".");
+      var customArea = state.titleMode === "customarea";
+      var frontMatter = aiText ? "the character and the caption text" : customArea ? "the character and the empty text area" : "the character";
+      if (state.bgMode === "chroma") p.push("Put everything on a completely solid, uniform, flat green background, hex #00B140 (chroma key green) — no shadows, gradients, frames, or anything else behind " + frontMatter + ".");
       else if (state.bgMode === "transparent") p.push("Transparent background (alpha channel), nothing else in the frame.");
-      if (aiText) p.push("Render the caption text \"" + entry.title + "\" as part of the sticker artwork — place it wherever it looks best (above / beside the character, inside a speech bubble, or as a bold stylized title), drawn in the same illustration style with a clear outline / strong contrast so it is easy to read. The text must be exactly \"" + entry.title + "\" and clearly legible.");
-      else p.push("Do not render any text, letters, captions, or words anywhere in the image.");
+      if (aiText) {
+        p.push("Render the caption text \"" + entry.title + "\" as part of the sticker artwork — place it wherever it looks best (above / beside the character, inside a speech bubble, or as a bold stylized title), drawn in the same illustration style with a clear outline / strong contrast so it is easy to read. The text must be exactly \"" + entry.title + "\" and clearly legible.");
+      } else if (customArea) {
+        var sizeHint = (entry.title && entry.title.trim()) ? ("for a short caption like \"" + entry.title.trim() + "\"") : "for a short 4–6 character caption";
+        p.push("Leave one clear, completely EMPTY area (an empty speech bubble, banner, or blank space — usually near the top) sized " + sizeHint + " — the user will type their own text into it later, so it must contain NO text, letters, numbers, or placeholder characters at all. Keep the character and this empty area well inside the frame: at least about 25px from the left and right edges and 15px from the top and bottom. Do not render any other text anywhere in the image.");
+      } else {
+        p.push("Do not render any text, letters, captions, or words anywhere in the image.");
+      }
       return p.join(" ");
     }
 
