@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>發票章加蓋 · HD 的工具箱</title>
-  <meta name="description" content="在 PDF 上加蓋發票章：點擊放置、拖曳調整、控制大小 / 旋轉 / 透明度，多頁分別處理 — 全部在瀏覽器裡完成，檔案不上傳。">
+  <meta name="description" content="在 PDF 上加蓋大小章與騎縫章：點擊放置、拖曳調整、控制大小 / 旋轉 / 透明度，多頁分別處理 — 全部在瀏覽器裡完成，檔案不上傳。">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="/static/shared/app.css">
@@ -13,42 +13,68 @@
   <style>
     /* ===== 發票章工具專屬樣式（共用元件在 app.css）===== */
 
-    /* 章圖上傳後的小預覽（棋盤格底，看得出透明） */
+    /* 章圖庫：大章 / 小章 兩個 slot */
+    .stamp-slots { display: flex; flex-direction: column; gap: var(--space-3); }
+    .stamp-slot {
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: var(--space-3);
+    }
+    .stamp-slot .field-label { margin-bottom: var(--space-2); }
+    .stamp-slot .dropzone { padding: var(--space-4) var(--space-3); background: var(--surface); }
+    .stamp-slot .dropzone__icon { width: 24px; height: 24px; margin-bottom: var(--space-2); }
+    .stamp-slot .dropzone__title { font-size: 13px; }
+    .stamp-slot .dropzone__hint { font-size: 11px; }
+
+    /* 章預覽（棋盤格底，看得出透明） */
     .stamp-preview-wrap {
       display: none;
       align-items: center;
       gap: var(--space-3);
-      margin-top: var(--space-3);
-      padding: var(--space-3);
-      background: var(--surface-2);
+      padding: var(--space-2) var(--space-3);
+      background: var(--surface);
       border: 1px solid var(--border);
       border-radius: var(--radius-sm);
     }
     .stamp-preview-wrap.is-shown { display: flex; }
     .stamp-preview-thumb {
-      width: 56px; height: 56px; flex-shrink: 0; border-radius: 6px; overflow: hidden;
+      width: 48px; height: 48px; flex-shrink: 0; border-radius: 6px; overflow: hidden;
       background-color: #fff;
       background-image:
         linear-gradient(45deg, #d8d8d8 25%, transparent 25%),
         linear-gradient(-45deg, #d8d8d8 25%, transparent 25%),
         linear-gradient(45deg, transparent 75%, #d8d8d8 75%),
         linear-gradient(-45deg, transparent 75%, #d8d8d8 75%);
-      background-size: 14px 14px;
-      background-position: 0 0, 0 7px, 7px -7px, -7px 0;
+      background-size: 12px 12px;
+      background-position: 0 0, 0 6px, 6px -6px, -6px 0;
       display: flex; align-items: center; justify-content: center;
     }
     .stamp-preview-thumb img { max-width: 100%; max-height: 100%; }
     .stamp-preview-meta {
-      flex: 1; min-width: 0; font-size: 13px; color: var(--text-muted);
-      display: flex; flex-direction: column; gap: 2px;
+      flex: 1; min-width: 0; font-size: 12px; color: var(--text-muted);
+      display: flex; flex-direction: column; gap: 1px;
     }
-    .stamp-preview-meta .name { color: var(--text); font-family: var(--font-mono); font-size: 12px;
-      white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .stamp-preview-meta .name {
+      color: var(--text); font-family: var(--font-mono); font-size: 11px;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
 
-    /* 屬性區三條滑桿 */
-    .stamp-attr-hint {
-      font-size: 12px; color: var(--text-dim); margin-top: var(--space-2);
+    /* 模式切換 / 章屬性 panel */
+    .attr-panel[hidden] { display: none !important; }
+    .stamp-attr-hint { font-size: 12px; color: var(--text-dim); margin-top: var(--space-3); line-height: 1.6; }
+
+    /* checkbox 列 */
+    .check-row {
+      display: flex; align-items: center; gap: var(--space-2);
+      font-size: 14px; color: var(--text); cursor: pointer;
+      padding: var(--space-2) 0;
     }
+    .check-row input[type="checkbox"] { cursor: pointer; width: 16px; height: 16px; }
+
+    /* segmented 按鈕被禁用時 */
+    .segmented__btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    .segmented__btn:disabled:hover { color: var(--text-muted); }
 
     /* 頁面縮圖列表 */
     .page-thumbs {
@@ -66,17 +92,12 @@
       transition: border-color 0.15s, background-color 0.15s;
     }
     .page-thumb:hover { border-color: var(--accent-border); }
-    .page-thumb.is-active {
-      border-color: var(--accent);
-      background: var(--accent-subtle);
-    }
+    .page-thumb.is-active { border-color: var(--accent); background: var(--accent-subtle); }
     .page-thumb__canvas {
       width: 56px; height: auto; flex-shrink: 0; border-radius: 4px; background: #fff;
       box-shadow: var(--shadow-sm);
     }
-    .page-thumb__label {
-      font-family: var(--font-mono); font-size: 13px; color: var(--text);
-    }
+    .page-thumb__label { font-family: var(--font-mono); font-size: 13px; color: var(--text); }
     .page-thumb__badge {
       position: absolute; top: 4px; right: 6px;
       min-width: 18px; height: 18px; padding: 0 5px;
@@ -84,6 +105,12 @@
       color: var(--accent-fg); background: var(--accent);
       border-radius: var(--radius-full);
       display: inline-flex; align-items: center; justify-content: center;
+    }
+    .page-thumb__badge--perf {
+      right: auto; left: 6px;
+      background: var(--surface);
+      color: var(--accent);
+      border: 1px solid var(--accent);
     }
 
     /* 右側預覽舞台 */
@@ -100,11 +127,8 @@
     }
     .stamp-figure canvas { display: block; }
 
-    /* 章 overlay 層 */
-    .stamp-layer {
-      position: absolute; inset: 0;
-      cursor: crosshair;
-    }
+    /* 章 overlay 層（一般章拖放）*/
+    .stamp-layer { position: absolute; inset: 0; cursor: crosshair; }
     .stamp-item {
       position: absolute;
       transform-origin: center center;
@@ -113,10 +137,7 @@
       touch-action: none;
     }
     .stamp-item.is-dragging { cursor: grabbing; }
-    .stamp-item img {
-      display: block; width: 100%; height: 100%;
-      pointer-events: none;
-    }
+    .stamp-item img { display: block; width: 100%; height: 100%; pointer-events: none; }
     .stamp-item.is-selected::before {
       content: '';
       position: absolute; inset: -3px;
@@ -141,6 +162,17 @@
     .stamp-item__delete:hover { background: var(--error); color: var(--accent-fg); }
     .stamp-item.is-selected .stamp-item__delete { display: inline-flex; }
 
+    /* 騎縫章 切片預覽（疊在當前頁右邊緣）*/
+    .perf-preview {
+      position: absolute;
+      display: none;
+      pointer-events: none;
+      background-repeat: no-repeat;
+      outline: 1px dashed var(--accent);
+      outline-offset: -1px;
+    }
+    .perf-preview.is-shown { display: block; }
+
     /* 預覽底部 caption */
     .stamp-caption {
       margin-top: var(--space-3);
@@ -148,19 +180,10 @@
       font-family: var(--font-mono); font-size: 12px;
       color: var(--text-dim);
     }
-
-    /* 章屬性區停用時 */
     .section.is-disabled { opacity: 0.5; pointer-events: none; }
-
-    /* btn-block + icon */
     .btn--block .icon { width: 18px; height: 18px; }
-
-    /* 預覽空狀態的提示行 */
-    .preview-empty__hint {
-      margin-top: var(--space-3);
-      font-size: 12px;
-      color: var(--text-dim);
-    }
+    .preview-empty__hint { margin-top: var(--space-3); font-size: 12px; color: var(--text-dim); }
+    .hint-text { font-size: 12px; color: var(--text-dim); line-height: 1.6; }
   </style>
 </head>
 <body>
@@ -200,61 +223,148 @@
         </div>
 
         <div class="section">
-          <div class="section__label"><span class="section__num">02</span> 上傳發票章</div>
-          <div class="dropzone dropzone--compact" id="stampDropzone">
-            <input type="file" id="stampInput" accept="image/png,image/jpeg,.png,.jpg,.jpeg" hidden>
-            <svg class="dropzone__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="10" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
-            <div class="dropzone__title">拖曳章圖到這裡</div>
-            <div class="dropzone__hint">PNG（建議去背）或 JPG</div>
-          </div>
-          <div class="stamp-preview-wrap" id="stampPreviewWrap">
-            <div class="stamp-preview-thumb"><img id="stampPreviewImg" alt="章預覽"></div>
-            <div class="stamp-preview-meta">
-              <span class="name" id="stampFileName"></span>
-              <span id="stampSizeText"></span>
+          <div class="section__label"><span class="section__num">02</span> 章圖庫</div>
+          <p class="hint-text" style="margin-bottom:var(--space-3)">大章、小章至少上傳一張。可分別放在不同位置，或挑其中一張當騎縫章。</p>
+          <div class="stamp-slots">
+
+            <div class="stamp-slot" data-kind="big">
+              <span class="field-label">大章</span>
+              <div class="dropzone dropzone--compact" id="stampDropzoneBig" data-kind="big">
+                <input type="file" id="stampInputBig" accept="image/png,image/jpeg,.png,.jpeg,.jpg" hidden>
+                <svg class="dropzone__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3"/></svg>
+                <div class="dropzone__title">上傳大章</div>
+                <div class="dropzone__hint">PNG（建議去背）或 JPG</div>
+              </div>
+              <div class="stamp-preview-wrap mt-4" id="stampPreviewWrapBig">
+                <div class="stamp-preview-thumb"><img id="stampPreviewImgBig" alt="大章預覽"></div>
+                <div class="stamp-preview-meta">
+                  <span class="name" id="stampFileNameBig"></span>
+                  <span id="stampSizeTextBig"></span>
+                </div>
+                <button type="button" class="btn btn--ghost" id="stampClearBtnBig" data-kind="big" style="padding:6px 10px;font-size:12px" title="移除大章">
+                  <svg class="icon icon--sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6L6 18M6 6l12 12"/></svg>
+                </button>
+              </div>
             </div>
-            <button type="button" class="btn btn--ghost" id="stampClearBtn" style="padding:6px 10px;font-size:12px" title="移除章圖">
-              <svg class="icon icon--sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6L6 18M6 6l12 12"/></svg>
-            </button>
+
+            <div class="stamp-slot" data-kind="small">
+              <span class="field-label">小章</span>
+              <div class="dropzone dropzone--compact" id="stampDropzoneSmall" data-kind="small">
+                <input type="file" id="stampInputSmall" accept="image/png,image/jpeg,.png,.jpeg,.jpg" hidden>
+                <svg class="dropzone__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="5" width="14" height="14" rx="1"/><rect x="9" y="9" width="6" height="6"/></svg>
+                <div class="dropzone__title">上傳小章</div>
+                <div class="dropzone__hint">PNG（建議去背）或 JPG</div>
+              </div>
+              <div class="stamp-preview-wrap mt-4" id="stampPreviewWrapSmall">
+                <div class="stamp-preview-thumb"><img id="stampPreviewImgSmall" alt="小章預覽"></div>
+                <div class="stamp-preview-meta">
+                  <span class="name" id="stampFileNameSmall"></span>
+                  <span id="stampSizeTextSmall"></span>
+                </div>
+                <button type="button" class="btn btn--ghost" id="stampClearBtnSmall" data-kind="small" style="padding:6px 10px;font-size:12px" title="移除小章">
+                  <svg class="icon icon--sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6L6 18M6 6l12 12"/></svg>
+                </button>
+              </div>
+            </div>
+
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section__label"><span class="section__num">03</span> 模式</div>
+          <div class="segmented" id="modeSeg" role="group" aria-label="蓋章模式">
+            <button type="button" class="segmented__btn" data-mode="normal" aria-pressed="true">一般章</button>
+            <button type="button" class="segmented__btn" data-mode="perforation" aria-pressed="false">騎縫章</button>
           </div>
         </div>
 
         <div class="section" id="attrSection">
-          <div class="section__label"><span class="section__num">03</span> 章屬性</div>
+          <div class="section__label"><span class="section__num">04</span> 章屬性</div>
 
-          <span class="field-label">大小</span>
-          <div class="range-field">
-            <input type="range" id="sizeSlider" min="30" max="400" value="120">
-            <span class="range-field__val" id="sizeVal">120</span>
-          </div>
-
-          <div class="mt-4">
-            <span class="field-label">旋轉</span>
-            <div class="range-field">
-              <input type="range" id="rotationSlider" min="-180" max="180" value="0">
-              <span class="range-field__val" id="rotationVal">0°</span>
+          <!-- 一般模式 -->
+          <div class="attr-panel" id="attrPanelNormal">
+            <span class="field-label">使用哪張章</span>
+            <div class="segmented" id="kindSegNormal" role="group" aria-label="使用哪張章">
+              <button type="button" class="segmented__btn" data-kind="big" aria-pressed="true">大章</button>
+              <button type="button" class="segmented__btn" data-kind="small" aria-pressed="false">小章</button>
             </div>
-          </div>
 
-          <div class="mt-4">
-            <span class="field-label">透明度</span>
-            <div class="range-field">
-              <input type="range" id="opacitySlider" min="10" max="100" value="100">
-              <span class="range-field__val" id="opacityVal">100%</span>
+            <div class="mt-4">
+              <span class="field-label">大小</span>
+              <div class="range-field">
+                <input type="range" id="sizeSlider" min="30" max="400" value="120">
+                <span class="range-field__val" id="sizeVal">120</span>
+              </div>
             </div>
+
+            <div class="mt-4">
+              <span class="field-label">旋轉</span>
+              <div class="range-field">
+                <input type="range" id="rotationSlider" min="-180" max="180" value="0">
+                <span class="range-field__val" id="rotationVal">0°</span>
+              </div>
+            </div>
+
+            <div class="mt-4">
+              <span class="field-label">透明度</span>
+              <div class="range-field">
+                <input type="range" id="opacitySlider" min="10" max="100" value="100">
+                <span class="range-field__val" id="opacityVal">100%</span>
+              </div>
+            </div>
+
+            <p class="stamp-attr-hint" id="attrHint">點 PDF 任意位置以放置章。先選一個章再調滑桿可以修改該章。</p>
           </div>
 
-          <p class="stamp-attr-hint" id="attrHint">點 PDF 任意位置以放置章。先選一個章再調滑桿可以修改該章。</p>
+          <!-- 騎縫模式 -->
+          <div class="attr-panel" id="attrPanelPerforation" hidden>
+            <span class="field-label">使用哪張章</span>
+            <div class="segmented" id="kindSegPerforation" role="group" aria-label="騎縫章使用哪張章">
+              <button type="button" class="segmented__btn" data-kind="big" aria-pressed="true">大章</button>
+              <button type="button" class="segmented__btn" data-kind="small" aria-pressed="false">小章</button>
+            </div>
+
+            <label class="check-row mt-4">
+              <input type="checkbox" id="perforationEnabled">
+              <span>在每頁右邊蓋騎縫章</span>
+            </label>
+
+            <div class="mt-4">
+              <span class="field-label">縱向位置（從頁面頂端起算）</span>
+              <div class="range-field">
+                <input type="range" id="perfYSlider" min="5" max="95" value="50">
+                <span class="range-field__val" id="perfYVal">50%</span>
+              </div>
+            </div>
+
+            <div class="mt-4">
+              <span class="field-label">章高度</span>
+              <div class="range-field">
+                <input type="range" id="perfHSlider" min="5" max="40" value="14">
+                <span class="range-field__val" id="perfHVal">14%</span>
+              </div>
+            </div>
+
+            <div class="mt-4">
+              <span class="field-label">透明度</span>
+              <div class="range-field">
+                <input type="range" id="perfOpacitySlider" min="10" max="100" value="100">
+                <span class="range-field__val" id="perfOpacityVal">100%</span>
+              </div>
+            </div>
+
+            <p class="stamp-attr-hint">章會被切成 <b id="perfNSlices">N</b> 等分（= 頁數），每頁右邊放對應切片。列印後右邊對齊堆疊可拼回完整章。</p>
+          </div>
         </div>
 
         <div class="section" id="pageSection" hidden>
-          <div class="section__label"><span class="section__num">04</span> 頁面</div>
+          <div class="section__label"><span class="section__num">05</span> 頁面</div>
           <div class="page-thumbs" id="pageThumbs"></div>
         </div>
 
         <button type="button" class="btn btn--primary btn--block" id="exportBtn" disabled>
           <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5M12 15V3"/></svg>
-          <span id="exportBtnLabel">上傳 PDF 與發票章後可匯出</span>
+          <span id="exportBtnLabel">上傳 PDF 與章圖後可匯出</span>
         </button>
 
         <div class="progress" id="progress">
@@ -286,6 +396,7 @@
           <div>
             <div class="stamp-figure" id="stampFigure">
               <canvas id="pdfCanvas"></canvas>
+              <div class="perf-preview" id="perfPreview"></div>
               <div class="stamp-layer" id="stampLayer"></div>
             </div>
             <div class="stamp-caption" id="stampCaption"></div>
@@ -331,14 +442,21 @@
     var $ = function (id) { return document.getElementById(id); };
     var els = {
       pdfDropzone: $('pdfDropzone'), pdfInput: $('pdfInput'), pdfFileName: $('pdfFileName'),
-      stampDropzone: $('stampDropzone'), stampInput: $('stampInput'),
-      stampPreviewWrap: $('stampPreviewWrap'), stampPreviewImg: $('stampPreviewImg'),
-      stampFileName: $('stampFileName'), stampSizeText: $('stampSizeText'),
-      stampClearBtn: $('stampClearBtn'),
-      attrSection: $('attrSection'), attrHint: $('attrHint'),
+      modeSeg: $('modeSeg'),
+      attrSection: $('attrSection'),
+      attrPanelNormal: $('attrPanelNormal'),
+      attrPanelPerforation: $('attrPanelPerforation'),
+      kindSegNormal: $('kindSegNormal'),
+      kindSegPerforation: $('kindSegPerforation'),
       sizeSlider: $('sizeSlider'), sizeVal: $('sizeVal'),
       rotationSlider: $('rotationSlider'), rotationVal: $('rotationVal'),
       opacitySlider: $('opacitySlider'), opacityVal: $('opacityVal'),
+      attrHint: $('attrHint'),
+      perforationEnabled: $('perforationEnabled'),
+      perfYSlider: $('perfYSlider'), perfYVal: $('perfYVal'),
+      perfHSlider: $('perfHSlider'), perfHVal: $('perfHVal'),
+      perfOpacitySlider: $('perfOpacitySlider'), perfOpacityVal: $('perfOpacityVal'),
+      perfNSlices: $('perfNSlices'),
       pageSection: $('pageSection'), pageThumbs: $('pageThumbs'),
       exportBtn: $('exportBtn'), exportBtnLabel: $('exportBtnLabel'),
       progress: $('progress'), progressBar: $('progressBar'), progressStatus: $('progressStatus'),
@@ -346,30 +464,56 @@
       successMsg: $('successMsg'), successText: $('successText'),
       previewEmpty: $('previewEmpty'), stampStage: $('stampStage'),
       stampFigure: $('stampFigure'), pdfCanvas: $('pdfCanvas'),
+      perfPreviewEl: $('perfPreview'),
       stampLayer: $('stampLayer'), stampCaption: $('stampCaption'),
       previewArea: $('previewArea')
+    };
+    var slot = {
+      big: {
+        dropzone: $('stampDropzoneBig'), input: $('stampInputBig'),
+        previewWrap: $('stampPreviewWrapBig'), previewImg: $('stampPreviewImgBig'),
+        fileName: $('stampFileNameBig'), sizeText: $('stampSizeTextBig'),
+        clearBtn: $('stampClearBtnBig')
+      },
+      small: {
+        dropzone: $('stampDropzoneSmall'), input: $('stampInputSmall'),
+        previewWrap: $('stampPreviewWrapSmall'), previewImg: $('stampPreviewImgSmall'),
+        fileName: $('stampFileNameSmall'), sizeText: $('stampSizeTextSmall'),
+        clearBtn: $('stampClearBtnSmall')
+      }
     };
 
     // ---- state ----
     var state = {
-      pdfDoc: null,          // pdf.js document
-      pdfBytes: null,        // Uint8Array — 給 pdf-lib 用（保留原始 bytes）
+      pdfDoc: null,
+      pdfBytes: null,
       pdfName: '',
       totalPages: 0,
       currentPage: 1,
-      pageDims: {},          // { pageNum: {pdfW, pdfH, canvasW, canvasH} }
-      stampImage: null,      // HTMLImageElement
-      stampMime: '',         // 'image/png' | 'image/jpeg'
-      stampBytes: null,      // Uint8Array — 給 pdf-lib 用
-      stampFile: '',
-      stamps: {},            // { pageNum: [{id, cx, cy, size, rotation, opacity}] }
+      pageDims: {},
+
+      stampsLib: { big: null, small: null },   // {image, bytes, mime, file, url}
+      activeKind: 'big',
+
+      mode: 'normal',                          // 'normal' | 'perforation'
+
+      stamps: {},                              // 一般章 placed list
       selectedId: null,
       draft: { size: 120, rotation: 0, opacity: 1 },
+
+      perforation: {
+        enabled: false,
+        kind: 'big',
+        cyRatio: 0.5,
+        heightRatio: 0.14,
+        opacity: 1
+      },
+
       busy: false,
       nextId: 1
     };
 
-    // ---- 工具：訊息 / 進度 ----
+    // ---- 工具 ----
     function showError(msg) {
       els.errorText.textContent = msg;
       els.errorMsg.classList.add('is-shown');
@@ -390,13 +534,13 @@
       els.progressBar.style.width = Math.max(0, Math.min(100, pct)) + '%';
     }
     function hideProgress() { els.progress.classList.remove('is-shown'); }
-
     function formatBytes(n) {
       if (n < 1024) return n + ' B';
       if (n < 1024 * 1024) return (n / 1024).toFixed(1) + ' KB';
       return (n / 1024 / 1024).toFixed(1) + ' MB';
     }
-
+    function getStamp(kind) { return state.stampsLib[kind]; }
+    function hasAnyStamp() { return !!state.stampsLib.big || !!state.stampsLib.small; }
     function countAllStamps() {
       var n = 0;
       Object.keys(state.stamps).forEach(function (k) { n += state.stamps[k].length; });
@@ -404,16 +548,22 @@
     }
 
     function updateExportBtn() {
-      var hasAny = state.pdfDoc && state.stampImage && countAllStamps() > 0;
-      els.exportBtn.disabled = !hasAny || state.busy;
-      if (!state.pdfDoc) {
-        els.exportBtnLabel.textContent = '上傳 PDF 與發票章後可匯出';
-      } else if (!state.stampImage) {
-        els.exportBtnLabel.textContent = '上傳發票章後可匯出';
-      } else if (!hasAny) {
-        els.exportBtnLabel.textContent = '點 PDF 放上至少一個章';
+      var hasPdf = !!state.pdfDoc;
+      var hasNormal = countAllStamps() > 0;
+      var hasPerf = state.perforation.enabled && !!getStamp(state.perforation.kind);
+      var ok = hasPdf && (hasNormal || hasPerf);
+      els.exportBtn.disabled = !ok || state.busy;
+      if (!hasPdf) {
+        els.exportBtnLabel.textContent = '上傳 PDF 後可匯出';
+      } else if (!hasAnyStamp()) {
+        els.exportBtnLabel.textContent = '上傳大章或小章後可匯出';
+      } else if (!hasNormal && !hasPerf) {
+        els.exportBtnLabel.textContent = '在 PDF 上放章或啟用騎縫章';
       } else {
-        els.exportBtnLabel.textContent = '匯出含章 PDF';
+        var parts = [];
+        if (hasNormal) parts.push(countAllStamps() + ' 個一般章');
+        if (hasPerf) parts.push('騎縫章');
+        els.exportBtnLabel.textContent = '匯出含章 PDF（' + parts.join(' + ') + '）';
       }
     }
 
@@ -441,7 +591,6 @@
         state.busy = true;
         setProgress('讀取 PDF…', 10);
         var ab = await readFileAsArrayBuffer(file);
-        // pdf.js 載入後會把 buffer 取走（detach），給 pdf-lib 留一份複本
         state.pdfBytes = new Uint8Array(ab.slice(0));
         var loadingTask = pdfjsLib.getDocument({ data: new Uint8Array(ab) });
         var pdf = await loadingTask.promise;
@@ -458,6 +607,7 @@
         els.previewEmpty.hidden = true;
         els.stampStage.hidden = false;
         els.pageSection.hidden = false;
+        els.perfNSlices.textContent = String(state.totalPages);
 
         setProgress('渲染頁面…', 50);
         await renderCurrentPage();
@@ -490,18 +640,18 @@
       els.pageSection.hidden = true;
       while (els.pageThumbs.firstChild) els.pageThumbs.removeChild(els.pageThumbs.firstChild);
       while (els.stampLayer.firstChild) els.stampLayer.removeChild(els.stampLayer.firstChild);
+      els.perfPreviewEl.classList.remove('is-shown');
       updateExportBtn();
     }
 
-    // ---- 渲染當前頁面到右側 canvas ----
+    // ---- 渲染當前頁面 ----
     async function renderCurrentPage() {
       if (!state.pdfDoc) return;
       var page = await state.pdfDoc.getPage(state.currentPage);
       var unscaled = page.getViewport({ scale: 1 });
-      // 依預覽區可用尺寸決定 scale（首次渲染為主，不做 resize 重算）
       var avail = els.previewArea.getBoundingClientRect();
       var maxW = Math.max(320, avail.width - 64);
-      var maxH = Math.max(320, avail.height - 96); // 留底部 caption 空間
+      var maxH = Math.max(320, avail.height - 96);
       var scale = Math.min(maxW / unscaled.width, maxH / unscaled.height, 2);
       if (!isFinite(scale) || scale <= 0) scale = 1;
       var viewport = page.getViewport({ scale: scale });
@@ -523,11 +673,19 @@
       };
 
       renderStampLayer();
-      els.stampCaption.textContent = '第 ' + state.currentPage + ' / ' + state.totalPages + ' 頁 · ' +
-        ((state.stamps[state.currentPage] || []).length) + ' 個章';
+      refreshPerforationPreview();
+      updateCaption();
     }
 
-    // ---- 縮圖列 ----
+    function updateCaption() {
+      if (!state.pdfDoc) { els.stampCaption.textContent = ''; return; }
+      var arr = state.stamps[state.currentPage] || [];
+      var parts = ['第 ' + state.currentPage + ' / ' + state.totalPages + ' 頁', arr.length + ' 個章'];
+      if (state.perforation.enabled && getStamp(state.perforation.kind)) parts.push('騎縫切片 ' + state.currentPage + '/' + state.totalPages);
+      els.stampCaption.textContent = parts.join(' · ');
+    }
+
+    // ---- 縮圖列表 ----
     async function buildThumbs() {
       while (els.pageThumbs.firstChild) els.pageThumbs.removeChild(els.pageThumbs.firstChild);
       for (var i = 1; i <= state.totalPages; i++) {
@@ -549,19 +707,25 @@
         badge.style.display = 'none';
         item.appendChild(badge);
 
+        var perfBadge = document.createElement('span');
+        perfBadge.className = 'page-thumb__badge page-thumb__badge--perf';
+        perfBadge.style.display = 'none';
+        perfBadge.title = '騎縫章切片';
+        perfBadge.textContent = '騎';
+        item.appendChild(perfBadge);
+
         item.addEventListener('click', onThumbClick);
         els.pageThumbs.appendChild(item);
 
-        // 非同步畫縮圖（不阻塞 UI 太久）
         // eslint-disable-next-line no-loop-func
         (function (pageNum, cv) {
           state.pdfDoc.getPage(pageNum).then(function (p) {
             var vp = p.getViewport({ scale: 1 });
-            var scale = 72 / vp.width;
-            var vpScaled = p.getViewport({ scale: scale });
-            cv.width = Math.floor(vpScaled.width);
-            cv.height = Math.floor(vpScaled.height);
-            p.render({ canvasContext: cv.getContext('2d'), viewport: vpScaled });
+            var sc = 72 / vp.width;
+            var vp2 = p.getViewport({ scale: sc });
+            cv.width = Math.floor(vp2.width);
+            cv.height = Math.floor(vp2.height);
+            p.render({ canvasContext: cv.getContext('2d'), viewport: vp2 });
           });
         })(i, thumbCanvas);
       }
@@ -569,23 +733,24 @@
     }
 
     function refreshThumbBadges() {
-      var items = els.pageThumbs.querySelectorAll('.page-thumb');
-      items.forEach(function (item) {
+      var hasPerf = state.perforation.enabled && !!getStamp(state.perforation.kind);
+      els.pageThumbs.querySelectorAll('.page-thumb').forEach(function (item) {
         var p = parseInt(item.dataset.page, 10);
         var arr = state.stamps[p] || [];
-        var badge = item.querySelector('.page-thumb__badge');
+        var badges = item.querySelectorAll('.page-thumb__badge');
+        var normalBadge = badges[0], perfBadge = badges[1];
         if (arr.length > 0) {
-          badge.textContent = String(arr.length);
-          badge.style.display = 'inline-flex';
+          normalBadge.textContent = String(arr.length);
+          normalBadge.style.display = 'inline-flex';
         } else {
-          badge.style.display = 'none';
+          normalBadge.style.display = 'none';
         }
+        perfBadge.style.display = hasPerf ? 'inline-flex' : 'none';
       });
     }
 
     function refreshThumbActive() {
-      var items = els.pageThumbs.querySelectorAll('.page-thumb');
-      items.forEach(function (item) {
+      els.pageThumbs.querySelectorAll('.page-thumb').forEach(function (item) {
         var p = parseInt(item.dataset.page, 10);
         item.classList.toggle('is-active', p === state.currentPage);
       });
@@ -600,8 +765,8 @@
       await renderCurrentPage();
     }
 
-    // ---- 章圖載入 ----
-    async function loadStamp(file) {
+    // ---- 章圖載入 / 清除 ----
+    async function loadStamp(kind, file) {
       hideMessages();
       if (!file) return;
       var mime = file.type;
@@ -611,10 +776,6 @@
       }
       try {
         var ab = await readFileAsArrayBuffer(file);
-        state.stampBytes = new Uint8Array(ab);
-        state.stampMime = mime;
-        state.stampFile = file.name;
-
         var img = new Image();
         var url = URL.createObjectURL(file);
         await new Promise(function (resolve, reject) {
@@ -622,36 +783,159 @@
           img.onerror = function () { reject(new Error('章圖讀取失敗')); };
           img.src = url;
         });
-        state.stampImage = img;
+        // 釋放舊的 url
+        var old = state.stampsLib[kind];
+        if (old && old.url) URL.revokeObjectURL(old.url);
 
-        els.stampPreviewImg.src = url;
-        els.stampFileName.textContent = file.name;
-        els.stampSizeText.textContent = img.naturalWidth + ' × ' + img.naturalHeight + ' · ' + formatBytes(file.size);
-        els.stampPreviewWrap.classList.add('is-shown');
-        updateAttrSectionState();
+        state.stampsLib[kind] = {
+          image: img,
+          bytes: new Uint8Array(ab),
+          mime: mime,
+          file: file.name,
+          url: url
+        };
+
+        var s = slot[kind];
+        s.previewImg.src = url;
+        s.fileName.textContent = file.name;
+        s.sizeText.textContent = img.naturalWidth + ' × ' + img.naturalHeight + ' · ' + formatBytes(file.size);
+        s.previewWrap.classList.add('is-shown');
+
+        // 第一次上傳時自動選為 active
+        if (!state.activeKind || !getStamp(state.activeKind)) state.activeKind = kind;
+        if (!getStamp(state.perforation.kind)) state.perforation.kind = kind;
+
+        refreshKindUI();
         renderStampLayer();
+        refreshPerforationPreview();
         updateExportBtn();
       } catch (err) {
         showError('章圖載入失敗：' + (err && err.message || err));
       }
     }
 
-    function clearStamp() {
-      state.stampImage = null; state.stampBytes = null; state.stampMime = ''; state.stampFile = '';
-      els.stampPreviewWrap.classList.remove('is-shown');
-      els.stampPreviewImg.removeAttribute('src');
-      els.stampInput.value = '';
-      // 已放置的章維持原樣，但會失去新增 / 預覽 — 提示使用者
-      updateAttrSectionState();
+    function clearStamp(kind) {
+      var old = state.stampsLib[kind];
+      if (old && old.url) URL.revokeObjectURL(old.url);
+      state.stampsLib[kind] = null;
+      var s = slot[kind];
+      s.previewWrap.classList.remove('is-shown');
+      s.previewImg.removeAttribute('src');
+      s.input.value = '';
+
+      // 移掉這 kind 已放置的一般章
+      Object.keys(state.stamps).forEach(function (p) {
+        state.stamps[p] = state.stamps[p].filter(function (st) { return st.kind !== kind; });
+        if (state.stamps[p].length === 0) delete state.stamps[p];
+      });
+      if (state.selectedId) {
+        var found = false;
+        for (var p in state.stamps) {
+          if (state.stamps[p].some(function (st) { return st.id === state.selectedId; })) { found = true; break; }
+        }
+        if (!found) state.selectedId = null;
+      }
+
+      // 騎縫如果用這 kind，切到另一張或關掉
+      if (state.perforation.kind === kind) {
+        var other = kind === 'big' ? 'small' : 'big';
+        if (getStamp(other)) {
+          state.perforation.kind = other;
+        } else {
+          state.perforation.enabled = false;
+          els.perforationEnabled.checked = false;
+        }
+      }
+      if (state.activeKind === kind) {
+        var other2 = kind === 'big' ? 'small' : 'big';
+        if (getStamp(other2)) state.activeKind = other2;
+      }
+
+      refreshKindUI();
+      refreshThumbBadges();
+      renderStampLayer();
+      refreshPerforationPreview();
+      updateCaption();
       updateExportBtn();
     }
 
-    function updateAttrSectionState() {
-      var ok = !!state.stampImage;
-      els.attrSection.classList.toggle('is-disabled', !ok && countAllStamps() === 0);
+    function refreshKindUI() {
+      var bigOK = !!getStamp('big');
+      var smallOK = !!getStamp('small');
+      setSegmentedDisabled(els.kindSegNormal, 'big', !bigOK);
+      setSegmentedDisabled(els.kindSegNormal, 'small', !smallOK);
+      setSegmentedDisabled(els.kindSegPerforation, 'big', !bigOK);
+      setSegmentedDisabled(els.kindSegPerforation, 'small', !smallOK);
+      setSegmentedPressed(els.kindSegNormal, 'kind', state.activeKind);
+      setSegmentedPressed(els.kindSegPerforation, 'kind', state.perforation.kind);
+      els.attrSection.classList.toggle('is-disabled', !bigOK && !smallOK);
+      els.perforationEnabled.disabled = !getStamp(state.perforation.kind);
     }
 
-    // ---- 滑桿同步 ----
+    function setSegmentedPressed(seg, attr, val) {
+      if (!seg) return;
+      seg.querySelectorAll('.segmented__btn').forEach(function (b) {
+        b.setAttribute('aria-pressed', String(b.dataset[attr] === val));
+      });
+    }
+    function setSegmentedDisabled(seg, kindOrMode, disabled) {
+      if (!seg) return;
+      var btn = seg.querySelector('[data-kind="' + kindOrMode + '"]') ||
+                seg.querySelector('[data-mode="' + kindOrMode + '"]');
+      if (btn) btn.disabled = disabled;
+    }
+
+    // ---- 模式切換 ----
+    function setMode(m) {
+      state.mode = m;
+      setSegmentedPressed(els.modeSeg, 'mode', m);
+      els.attrPanelNormal.hidden = m !== 'normal';
+      els.attrPanelPerforation.hidden = m !== 'perforation';
+      refreshPerforationPreview();
+      updateExportBtn();
+    }
+
+    function setActiveKind(kind) {
+      if (!getStamp(kind)) {
+        showError(kind === 'big' ? '請先上傳大章。' : '請先上傳小章。');
+        return;
+      }
+      state.activeKind = kind;
+      setSegmentedPressed(els.kindSegNormal, 'kind', kind);
+      // 若有選取的一般章不同 kind，不主動改它；只影響下次新放章
+      syncSliders();
+    }
+
+    function setPerfKind(kind) {
+      if (!getStamp(kind)) {
+        showError(kind === 'big' ? '請先上傳大章。' : '請先上傳小章。');
+        return;
+      }
+      state.perforation.kind = kind;
+      setSegmentedPressed(els.kindSegPerforation, 'kind', kind);
+      els.perforationEnabled.disabled = false;
+      refreshPerforationPreview();
+      refreshThumbBadges();
+      updateCaption();
+      updateExportBtn();
+    }
+
+    function setPerfEnabled(enabled) {
+      var perfStamp = getStamp(state.perforation.kind);
+      if (enabled && !perfStamp) {
+        showError('請先在章圖庫上傳「' + (state.perforation.kind === 'big' ? '大章' : '小章') + '」。');
+        els.perforationEnabled.checked = false;
+        return;
+      }
+      state.perforation.enabled = enabled;
+      els.perforationEnabled.checked = enabled;
+      refreshPerforationPreview();
+      refreshThumbBadges();
+      updateCaption();
+      updateExportBtn();
+    }
+
+    // ---- 一般章：滑桿同步 / 放置 / 刪除 / 拖曳 ----
     function syncSliders() {
       var stamp = getSelectedStamp();
       var src = stamp ? stamp : state.draft;
@@ -662,8 +946,8 @@
       els.opacitySlider.value = String(Math.round(src.opacity * 100));
       els.opacityVal.textContent = Math.round(src.opacity * 100) + '%';
       els.attrHint.textContent = stamp
-        ? '正在編輯選取的章。點空白處取消選取後，滑桿變成下一個新放章的預設值。'
-        : '點 PDF 任意位置以放置章。先選一個章再調滑桿可以修改該章。';
+        ? '正在編輯選取的章。Esc 或點選別處取消選取後，滑桿是下次新放章的預設值。'
+        : '點 PDF 任意位置以放置「' + (state.activeKind === 'big' ? '大章' : '小章') + '」。先選一個章再調滑桿可以修改該章。';
     }
 
     function getSelectedStamp() {
@@ -683,26 +967,27 @@
       if (stamp) updateStampEl(stamp);
     }
 
-    // ---- Stamp overlay ----
     function newStampId() { return 's' + (state.nextId++); }
 
-    function getStampPixelSize(sizeOnCanvas) {
-      // 維持章圖原始長寬比，size = 較長邊
-      var img = state.stampImage;
-      if (!img) return { w: sizeOnCanvas, h: sizeOnCanvas };
-      var iw = img.naturalWidth, ih = img.naturalHeight;
+    function getStampPixelSize(sizeOnCanvas, kind) {
+      var s = getStamp(kind);
+      if (!s) return { w: sizeOnCanvas, h: sizeOnCanvas };
+      var iw = s.image.naturalWidth, ih = s.image.naturalHeight;
       var ar = iw / ih;
       if (ar >= 1) return { w: sizeOnCanvas, h: sizeOnCanvas / ar };
       return { w: sizeOnCanvas * ar, h: sizeOnCanvas };
     }
 
     function makeStampEl(stamp) {
+      var s = getStamp(stamp.kind);
+      if (!s) return null;
       var el = document.createElement('div');
       el.className = 'stamp-item';
       el.dataset.id = stamp.id;
+      el.dataset.kind = stamp.kind;
 
       var img = document.createElement('img');
-      img.src = state.stampImage.src;
+      img.src = s.image.src;
       img.alt = '';
       el.appendChild(img);
 
@@ -725,7 +1010,7 @@
     function updateStampEl(stamp) {
       var el = els.stampLayer.querySelector('[data-id="' + stamp.id + '"]');
       if (!el) return;
-      var dims = getStampPixelSize(stamp.size);
+      var dims = getStampPixelSize(stamp.size, stamp.kind);
       el.style.left = stamp.cx + 'px';
       el.style.top = stamp.cy + 'px';
       el.style.width = dims.w + 'px';
@@ -736,28 +1021,27 @@
 
     function renderStampLayer() {
       while (els.stampLayer.firstChild) els.stampLayer.removeChild(els.stampLayer.firstChild);
-      if (!state.stampImage) {
-        els.stampCaption.textContent = state.pdfDoc ?
-          '第 ' + state.currentPage + ' / ' + state.totalPages + ' 頁 · ' +
-          ((state.stamps[state.currentPage] || []).length) + ' 個章' : '';
-        return;
-      }
       var arr = state.stamps[state.currentPage] || [];
       arr.forEach(function (stamp) {
         var el = makeStampEl(stamp);
+        if (!el) return;
         els.stampLayer.appendChild(el);
         updateStampEl(stamp);
         if (state.selectedId === stamp.id) el.classList.add('is-selected');
       });
-      els.stampCaption.textContent = '第 ' + state.currentPage + ' / ' + state.totalPages + ' 頁 · ' + arr.length + ' 個章';
+      updateCaption();
       syncSliders();
     }
 
     function placeStamp(cx, cy) {
-      if (!state.stampImage) return;
+      if (!getStamp(state.activeKind)) {
+        showError('請先上傳' + (state.activeKind === 'big' ? '大章' : '小章') + '。');
+        return;
+      }
       if (!state.stamps[state.currentPage]) state.stamps[state.currentPage] = [];
       var stamp = {
         id: newStampId(),
+        kind: state.activeKind,
         cx: cx, cy: cy,
         size: state.draft.size,
         rotation: state.draft.rotation,
@@ -770,11 +1054,9 @@
       updateStampEl(stamp);
       el.classList.add('is-selected');
       refreshThumbBadges();
-      updateAttrSectionState();
+      updateCaption();
       updateExportBtn();
       syncSliders();
-      els.stampCaption.textContent = '第 ' + state.currentPage + ' / ' + state.totalPages + ' 頁 · ' +
-        state.stamps[state.currentPage].length + ' 個章';
     }
 
     function deleteStamp(id) {
@@ -783,6 +1065,7 @@
       for (var i = 0; i < arr.length; i++) if (arr[i].id === id) { idx = i; break; }
       if (idx < 0) return;
       arr.splice(idx, 1);
+      if (arr.length === 0) delete state.stamps[state.currentPage];
       if (state.selectedId === id) state.selectedId = null;
       renderStampLayer();
       refreshThumbBadges();
@@ -791,8 +1074,13 @@
 
     function selectStamp(id) {
       state.selectedId = id;
-      var items = els.stampLayer.querySelectorAll('.stamp-item');
-      items.forEach(function (it) {
+      // 切到「使用」segmented 對應的 kind（讓 UX 清楚）
+      var stamp = getSelectedStamp();
+      if (stamp && stamp.kind !== state.activeKind) {
+        state.activeKind = stamp.kind;
+        setSegmentedPressed(els.kindSegNormal, 'kind', stamp.kind);
+      }
+      els.stampLayer.querySelectorAll('.stamp-item').forEach(function (it) {
         it.classList.toggle('is-selected', it.dataset.id === id);
       });
       syncSliders();
@@ -806,9 +1094,10 @@
       syncSliders();
     }
 
-    // ---- 拖曳 ----
+    // 拖曳
     var drag = null;
     function onStampPointerDown(e) {
+      if (state.mode !== 'normal') return;
       if (e.button !== 0 && e.pointerType === 'mouse') return;
       e.stopPropagation();
       var el = e.currentTarget;
@@ -816,7 +1105,6 @@
       selectStamp(id);
       var stamp = getSelectedStamp();
       if (!stamp) return;
-
       drag = {
         id: id,
         startX: e.clientX, startY: e.clientY,
@@ -852,29 +1140,65 @@
       drag = null;
     }
 
-    // 點 layer 空白處：以該點為中心放新章（對齊 PRD F-04）
+    // 點 layer 空白處：只有一般模式才能放章
     function onLayerClick(e) {
       if (e.target.closest('.stamp-item')) return;
-      if (!state.stampImage) {
-        showError('請先上傳發票章圖。');
+      if (state.mode !== 'normal') return;
+      if (!getStamp(state.activeKind)) {
+        showError('請先上傳' + (state.activeKind === 'big' ? '大章' : '小章') + '。');
         return;
       }
       var rect = els.stampLayer.getBoundingClientRect();
       placeStamp(e.clientX - rect.left, e.clientY - rect.top);
     }
 
+    // ---- 騎縫章預覽 ----
+    function refreshPerforationPreview() {
+      var overlay = els.perfPreviewEl;
+      var perf = state.perforation;
+      var stamp = getStamp(perf.kind);
+      var on = state.pdfDoc && perf.enabled && stamp;
+      // 騎縫預覽在「一般模式」也顯示，讓使用者隨時看到該頁切片位置；只是無法拖曳
+      if (!on) { overlay.classList.remove('is-shown'); return; }
+
+      var dims = state.pageDims[state.currentPage];
+      if (!dims) { overlay.classList.remove('is-shown'); return; }
+
+      var canvasH = dims.canvasH, canvasW = dims.canvasW;
+      var H = perf.heightRatio * canvasH;
+      var iw = stamp.image.naturalWidth, ih = stamp.image.naturalHeight;
+      var scale = H / ih;
+      var fullW = iw * scale;
+      var N = state.totalPages;
+      var sliceW = fullW / N;
+      var i = state.currentPage;
+      var sliceX = -(i - 1) * sliceW;
+
+      overlay.style.width = sliceW + 'px';
+      overlay.style.height = H + 'px';
+      overlay.style.left = (canvasW - sliceW) + 'px';
+      overlay.style.top = (perf.cyRatio * canvasH - H / 2) + 'px';
+      overlay.style.opacity = String(perf.opacity);
+      overlay.style.backgroundImage = 'url(' + stamp.url + ')';
+      overlay.style.backgroundSize = fullW + 'px ' + H + 'px';
+      overlay.style.backgroundPosition = sliceX + 'px 0px';
+      overlay.classList.add('is-shown');
+    }
+
     // ---- 匯出 ----
     async function exportPdf() {
       hideMessages();
       if (!state.pdfDoc || !state.pdfBytes) { showError('請先上傳 PDF。'); return; }
-      if (!state.stampImage || !state.stampBytes) { showError('請先上傳發票章圖。'); return; }
-      if (countAllStamps() === 0) { showError('請至少在一頁放上一個章。'); return; }
+      if (!hasAnyStamp()) { showError('請先上傳至少一張章圖。'); return; }
+      var hasNormal = countAllStamps() > 0;
+      var hasPerf = state.perforation.enabled && !!getStamp(state.perforation.kind);
+      if (!hasNormal && !hasPerf) { showError('請在 PDF 上放章或啟用騎縫章。'); return; }
       if (!window.PDFLib) { showError('pdf-lib 載入失敗，請重新整理頁面。'); return; }
 
       try {
         state.busy = true;
         updateExportBtn();
-        setProgress('組裝 PDF…', 10);
+        setProgress('組裝 PDF…', 5);
         var PDFLib = window.PDFLib;
         var pdfDoc;
         try {
@@ -888,64 +1212,118 @@
           }
           return;
         }
-        setProgress('嵌入章圖…', 30);
-        var image = state.stampMime === 'image/png'
-          ? await pdfDoc.embedPng(state.stampBytes)
-          : await pdfDoc.embedJpg(state.stampBytes);
 
-        // 章圖原始長寬比
-        var imgAR = state.stampImage.naturalWidth / state.stampImage.naturalHeight;
+        // 嵌入用到的章（最多 2 張）
+        setProgress('嵌入章圖…', 15);
+        var embedded = { big: null, small: null };
+        var kindsUsed = {};
+        Object.keys(state.stamps).forEach(function (p) {
+          state.stamps[p].forEach(function (s) { kindsUsed[s.kind] = true; });
+        });
+        if (hasPerf) kindsUsed[state.perforation.kind] = true;
 
-        var pageNums = Object.keys(state.stamps).map(function (k) { return parseInt(k, 10); }).sort(function (a, b) { return a - b; });
-        var total = pageNums.length;
-        setProgress('繪製章…', 50);
+        for (var kind in kindsUsed) {
+          var s = getStamp(kind);
+          if (!s) continue;
+          embedded[kind] = s.mime === 'image/png'
+            ? await pdfDoc.embedPng(s.bytes)
+            : await pdfDoc.embedJpg(s.bytes);
+        }
 
-        for (var i = 0; i < pageNums.length; i++) {
-          var pageNum = pageNums[i];
-          var stamps = state.stamps[pageNum] || [];
-          if (stamps.length === 0) continue;
-          var page = pdfDoc.getPage(pageNum - 1);
-          var dims = state.pageDims[pageNum];
-          if (!dims) {
-            // 沒渲染過的頁也要算 pdfW/H（用實際頁面尺寸）
-            var ps = page.getSize();
-            dims = { pdfW: ps.width, pdfH: ps.height, canvasW: ps.width, canvasH: ps.height };
-            state.pageDims[pageNum] = dims;
+        // 一般章
+        if (hasNormal) {
+          setProgress('繪製一般章…', 30);
+          var pageNums = Object.keys(state.stamps).map(function (k) { return parseInt(k, 10); }).sort(function (a, b) { return a - b; });
+          for (var idx = 0; idx < pageNums.length; idx++) {
+            var pn = pageNums[idx];
+            var stamps = state.stamps[pn] || [];
+            if (stamps.length === 0) continue;
+            var page = pdfDoc.getPage(pn - 1);
+            var dims = state.pageDims[pn];
+            if (!dims) {
+              var ps = page.getSize();
+              dims = { pdfW: ps.width, pdfH: ps.height, canvasW: ps.width, canvasH: ps.height };
+              state.pageDims[pn] = dims;
+            }
+            var ratio = dims.pdfW / dims.canvasW;
+            for (var j = 0; j < stamps.length; j++) {
+              var st = stamps[j];
+              var stampObj = getStamp(st.kind);
+              var img = embedded[st.kind];
+              if (!stampObj || !img) continue;
+              var imgAR = stampObj.image.naturalWidth / stampObj.image.naturalHeight;
+              var canvasSize = st.size;
+              var stampCW = imgAR >= 1 ? canvasSize : canvasSize * imgAR;
+              var stampCH = imgAR >= 1 ? canvasSize / imgAR : canvasSize;
+              var W = stampCW * ratio;
+              var H = stampCH * ratio;
+              var cxPdf = st.cx * ratio;
+              var cyPdf = dims.pdfH - st.cy * ratio;
+              var thetaPdf = -st.rotation * Math.PI / 180;
+              var cosT = Math.cos(thetaPdf), sinT = Math.sin(thetaPdf);
+              var x = cxPdf - (W / 2 * cosT - H / 2 * sinT);
+              var y = cyPdf - (W / 2 * sinT + H / 2 * cosT);
+              page.drawImage(img, {
+                x: x, y: y, width: W, height: H,
+                rotate: PDFLib.degrees(-st.rotation),
+                opacity: st.opacity
+              });
+            }
+            setProgress('繪製一般章…（' + (idx + 1) + ' / ' + pageNums.length + ' 頁）',
+              30 + Math.round((idx + 1) / pageNums.length * 25));
+            await new Promise(function (r) { setTimeout(r, 0); });
           }
-          var ratio = dims.pdfW / dims.canvasW;
-          for (var j = 0; j < stamps.length; j++) {
-            var s = stamps[j];
-            // 章在 canvas 上的長寬（保留長寬比，size = 較長邊）
-            var canvasSize = s.size;
-            var stampCW = imgAR >= 1 ? canvasSize : canvasSize * imgAR;
-            var stampCH = imgAR >= 1 ? canvasSize / imgAR : canvasSize;
-            var W = stampCW * ratio;
-            var H = stampCH * ratio;
-            // 章中心點在 PDF 座標（左下角原點）
-            var cxPdf = s.cx * ratio;
-            var cyPdf = dims.pdfH - s.cy * ratio;
-            // CSS 順時針正、pdf-lib 逆時針正 → 角度反向
-            var thetaPdf = -s.rotation * Math.PI / 180;
-            var cosT = Math.cos(thetaPdf), sinT = Math.sin(thetaPdf);
-            // 找 image 左下角 (x, y)，使旋轉後 image 中心落在 (cxPdf, cyPdf)
-            // 旋轉中心是 image 左下角，未旋轉時中心在 (x + W/2, y + H/2)
-            // 旋轉 θ 後中心位移為：(W/2*cosT - H/2*sinT, W/2*sinT + H/2*cosT)
-            var x = cxPdf - (W / 2 * cosT - H / 2 * sinT);
-            var y = cyPdf - (W / 2 * sinT + H / 2 * cosT);
-            page.drawImage(image, {
-              x: x, y: y, width: W, height: H,
-              rotate: PDFLib.degrees(-s.rotation),
-              opacity: s.opacity
+        }
+
+        // 騎縫章：用 canvas 切 N 等分，逐頁 embed + draw
+        if (hasPerf) {
+          setProgress('繪製騎縫章…', 60);
+          var perfStamp = getStamp(state.perforation.kind);
+          var N = state.totalPages;
+          var imgEl = perfStamp.image;
+          var iw = imgEl.naturalWidth, ih = imgEl.naturalHeight;
+          var sliceWImg = iw / N;
+
+          for (var p2 = 1; p2 <= N; p2++) {
+            var slc = document.createElement('canvas');
+            slc.width = Math.max(1, Math.ceil(sliceWImg));
+            slc.height = ih;
+            var sctx = slc.getContext('2d');
+            sctx.drawImage(imgEl,
+              (p2 - 1) * sliceWImg, 0, sliceWImg, ih,
+              0, 0, slc.width, slc.height);
+            var blob = await new Promise(function (r) { slc.toBlob(r, 'image/png'); });
+            var sliceBytes = new Uint8Array(await blob.arrayBuffer());
+            var sliceImg = await pdfDoc.embedPng(sliceBytes);
+
+            var page2 = pdfDoc.getPage(p2 - 1);
+            var ps2 = page2.getSize();
+            var pdfW = ps2.width, pdfH = ps2.height;
+
+            var H_pdf = state.perforation.heightRatio * pdfH;
+            var scale = H_pdf / ih;
+            var actualW_pdf = slc.width * scale;
+
+            var x_pdf = pdfW - actualW_pdf;
+            var cy_pdf = pdfH * (1 - state.perforation.cyRatio);
+            var y_pdf = cy_pdf - H_pdf / 2;
+
+            page2.drawImage(sliceImg, {
+              x: x_pdf, y: y_pdf,
+              width: actualW_pdf, height: H_pdf,
+              opacity: state.perforation.opacity
             });
+
+            setProgress('繪製騎縫章…（' + p2 + ' / ' + N + ' 頁）',
+              60 + Math.round(p2 / N * 30));
+            await new Promise(function (r) { setTimeout(r, 0); });
           }
-          setProgress('繪製章…（' + (i + 1) + ' / ' + total + ' 頁）', 50 + Math.round((i + 1) / total * 40));
-          await new Promise(function (r) { setTimeout(r, 0); });
         }
 
         setProgress('輸出檔案…', 95);
         var outBytes = await pdfDoc.save();
-        var blob = new Blob([outBytes], { type: 'application/pdf' });
-        var url = URL.createObjectURL(blob);
+        var blob2 = new Blob([outBytes], { type: 'application/pdf' });
+        var url = URL.createObjectURL(blob2);
         var a = document.createElement('a');
         a.href = url;
         a.download = 'stamped_' + (state.pdfName || 'document') + '.pdf';
@@ -955,7 +1333,10 @@
         setTimeout(function () { URL.revokeObjectURL(url); }, 4000);
 
         setProgress('完成', 100);
-        showSuccess('已匯出含章 PDF，共 ' + countAllStamps() + ' 個章 / ' + pageNums.length + ' 頁。');
+        var summary = [];
+        if (hasNormal) summary.push(countAllStamps() + ' 個一般章');
+        if (hasPerf) summary.push('騎縫章（' + state.totalPages + ' 頁）');
+        showSuccess('已匯出含章 PDF：' + summary.join(' + ') + '。');
         setTimeout(hideProgress, 600);
       } catch (err) {
         console.error(err);
@@ -984,10 +1365,34 @@
       });
     }
 
-    setupDropzone(els.pdfDropzone, els.pdfInput, function (file) { loadPdf(file); });
-    setupDropzone(els.stampDropzone, els.stampInput, function (file) { loadStamp(file); });
-    els.stampClearBtn.addEventListener('click', clearStamp);
+    setupDropzone(els.pdfDropzone, els.pdfInput, function (f) { loadPdf(f); });
+    setupDropzone(slot.big.dropzone, slot.big.input, function (f) { loadStamp('big', f); });
+    setupDropzone(slot.small.dropzone, slot.small.input, function (f) { loadStamp('small', f); });
+    slot.big.clearBtn.addEventListener('click', function () { clearStamp('big'); });
+    slot.small.clearBtn.addEventListener('click', function () { clearStamp('small'); });
 
+    // 模式
+    els.modeSeg.addEventListener('click', function (e) {
+      var btn = e.target.closest('.segmented__btn');
+      if (!btn) return;
+      setMode(btn.dataset.mode);
+    });
+    // kind segmented
+    els.kindSegNormal.addEventListener('click', function (e) {
+      var btn = e.target.closest('.segmented__btn');
+      if (!btn || btn.disabled) return;
+      setActiveKind(btn.dataset.kind);
+    });
+    els.kindSegPerforation.addEventListener('click', function (e) {
+      var btn = e.target.closest('.segmented__btn');
+      if (!btn || btn.disabled) return;
+      setPerfKind(btn.dataset.kind);
+    });
+    els.perforationEnabled.addEventListener('change', function () {
+      setPerfEnabled(els.perforationEnabled.checked);
+    });
+
+    // 一般滑桿
     els.sizeSlider.addEventListener('input', function () {
       onSliderChange('size', parseFloat(els.sizeSlider.value));
     });
@@ -998,10 +1403,26 @@
       onSliderChange('opacity', parseFloat(els.opacitySlider.value) / 100);
     });
 
+    // 騎縫滑桿
+    els.perfYSlider.addEventListener('input', function () {
+      state.perforation.cyRatio = parseFloat(els.perfYSlider.value) / 100;
+      els.perfYVal.textContent = els.perfYSlider.value + '%';
+      refreshPerforationPreview();
+    });
+    els.perfHSlider.addEventListener('input', function () {
+      state.perforation.heightRatio = parseFloat(els.perfHSlider.value) / 100;
+      els.perfHVal.textContent = els.perfHSlider.value + '%';
+      refreshPerforationPreview();
+    });
+    els.perfOpacitySlider.addEventListener('input', function () {
+      state.perforation.opacity = parseFloat(els.perfOpacitySlider.value) / 100;
+      els.perfOpacityVal.textContent = els.perfOpacitySlider.value + '%';
+      refreshPerforationPreview();
+    });
+
     els.stampLayer.addEventListener('click', onLayerClick);
     els.exportBtn.addEventListener('click', exportPdf);
 
-    // Esc 取消選取（不阻擋表單輸入；只在 PDF 已載入時才管）
     document.addEventListener('keydown', function (e) {
       if (e.key !== 'Escape') return;
       if (state.selectedId) {
@@ -1012,7 +1433,7 @@
 
     syncSliders();
     updateExportBtn();
-    updateAttrSectionState();
+    refreshKindUI();
   })();
   </script>
 

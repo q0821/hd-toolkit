@@ -449,3 +449,25 @@ AI 自動去背已「堪用」（imgly fp16 + 碎屑清理）；再往上：① 
 | 2026-05-26 | 章保留原始長寬比，size = 較長邊（PRD 公式以「正方形 size」描述但實務上章常非完全正方形） | 大多數公司章 / 發票章是圓形或方形（接近 1:1），少數橫式章圖（如品名章）非正方；保留長寬比比強制拉成正方形實用 |
 | 2026-05-26 | pdf-lib 旋轉中心是 image 左下角而非 stamp center，匯出時用三角函式反推左下角座標 | 文件實測；直接傳 `cxPdf - W/2, cyPdf - H/2` 在 rotation = 0 時對，但旋轉後 stamp 中心會偏移；補上 cos / sin 修正 |
 | 2026-05-26 | 滑桿同時編輯「選取的章」和「下次新章預設值」 | 直觀：拉到喜歡的大小 → 點下一個位置會用同樣大小；不用每次重設 |
+
+## 階段 13b：雙章（大 / 小章）+ 騎縫章模式（2026-05-26）
+- **state 拆分**：`stampImage/stampBytes/...` 改為 `stampsLib: {big, small}` 各自存 `{image, bytes, mime, file, url}`；placed stamp 多帶 `kind: 'big'|'small'`
+- **UI**：02 章圖庫變兩個 slot（大章 / 小章 各自獨立 dropzone + 預覽 + 移除鈕）；03 模式 segmented（一般 / 騎縫）切換 panel；04 章屬性分兩個 panel（hidden 屬性切換）
+  - 一般 panel：使用 segmented（大 / 小）+ 三條滑桿（沿用既有），未上傳的 kind 對應按鈕 disabled
+  - 騎縫 panel：使用 segmented + 啟用 checkbox + Y / 章高度 / 透明度 三條滑桿
+- **騎縫預覽**：`stamp-figure` 內加一個 `#perfPreview` div（pointer-events:none，CSS background-image + background-size 切片），切頁時 `background-position` 改成 `-(i-1)*sliceW`；同時顯示在「一般模式」上，讓使用者隨時知道騎縫切片位置
+- **騎縫匯出**：對每頁用 offscreen canvas 切 stampW/N × stampH 的 slice → toBlob('image/png') → embedPng → drawImage 到頁面右邊緣，Y 用 `cyRatio × pdfH` 中心、高度 `heightRatio × pdfH`、寬度按等比例縮放
+- **多章嵌入優化**：只 `embedPng/Jpg` 用到的 kind（最多 2 張）；騎縫切片每頁單獨 embed（N 次）— 對 5–30 頁文件可接受
+- **kind 清除**：清掉大章時，自動移除已放置的大章、若騎縫用大章則自動切到小章或關閉；activeKind 同理
+- **首頁 card + README + 本檔**：tool-card 文案加「大 / 小章 + 騎縫章」；README 工具表那一條更新
+- **狀態**：完成（無頭瀏覽器 4 頁 PDF + 大章紅 + 小章藍 端到端：在 page 1 放大 + 小、page 3 放大、啟用大章騎縫 Y=70%/H=20% → 匯出成功 successText「3 個一般章 + 騎縫章（4 頁）」；解析後 page1 紅左 3254 + 藍左 3340 + 紅右切片 2764、page2/4 只紅右切片、page3 紅左大章 + 紅右切片；切頁時 perfPreview backgroundPosition 從 -68.45 (slice 2) 改成對應的切片）
+
+## 追加決策紀錄
+| Date | Decision | Rationale |
+|------|----------|-----------|
+| 2026-05-26 | 大 / 小章 兩個獨立 slot，不做「+新增更多 stamp」可擴充清單 | 中小企業日常用印就是「大章＋小章」兩個固定角色；做成可擴充清單會讓 state 與 UI 變複雜，YAGNI |
+| 2026-05-26 | 騎縫章與一般章 panel 分開（mode segmented 切換），兩者狀態獨立、可同時匯出 | 兩種行為差很多（一般是「點擊放置」、騎縫是「自動套全頁」）；放同一個 panel 會讓控制爆炸 |
+| 2026-05-26 | 騎縫章用 offscreen canvas 切 N 等分後逐張 embedPng，不用 pdf-lib 的 clipping path 操作子 | 簡單可控；pdf-lib 沒公開 clipping API 要走 `pushOperators` 寫低階 PDF 操作子（風險高、易出錯）；N 張 embedPng 對 5–30 頁文件效能可接受 |
+| 2026-05-26 | 騎縫章座標用比例（cyRatio / heightRatio）不用絕對 canvas px | 不同頁可能尺寸不同；用比例可以一致套用到所有頁 |
+| 2026-05-26 | 騎縫章每頁切片繪在 PDF 右邊緣（x = pdfW - sliceW），不允許移動 | 傳統騎縫章就是貼右邊緣；做成「自由位置」會讓 UX 變複雜，且實務上沒需求 |
+| 2026-05-26 | 騎縫預覽在「一般模式」也顯示（pointer-events:none） | 讓使用者隨時看到「這頁切片會出現在哪」，不必跳到騎縫 panel 才能確認；不會干擾點擊放置 |
