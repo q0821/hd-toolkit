@@ -162,7 +162,7 @@
     .stamp-item__delete:hover { background: var(--error); color: var(--accent-fg); }
     .stamp-item.is-selected .stamp-item__delete { display: inline-flex; }
 
-    /* 騎縫章 切片預覽（疊在當前頁右邊緣）*/
+    /* 騎縫章 切片預覽（疊在當前頁右邊緣，大 / 小章各一個）*/
     .perf-preview {
       position: absolute;
       display: none;
@@ -170,8 +170,16 @@
       background-repeat: no-repeat;
       outline: 1px dashed var(--accent);
       outline-offset: -1px;
+      transform-origin: center center;
     }
     .perf-preview.is-shown { display: block; }
+    .perf-tilt-row {
+      display: flex; align-items: center; gap: var(--space-2);
+      margin-top: var(--space-3);
+    }
+    .perf-tilt-row .btn { font-size: 12px; padding: 6px 12px; }
+    .check-row.is-disabled { opacity: 0.5; cursor: not-allowed; }
+    .check-row.is-disabled input { cursor: not-allowed; }
 
     /* 預覽底部 caption */
     .stamp-caption {
@@ -318,27 +326,30 @@
 
           <!-- 騎縫模式 -->
           <div class="attr-panel" id="attrPanelPerforation" hidden>
-            <span class="field-label">使用哪張章</span>
-            <div class="segmented" id="kindSegPerforation" role="group" aria-label="騎縫章使用哪張章">
-              <button type="button" class="segmented__btn" data-kind="big" aria-pressed="true">大章</button>
-              <button type="button" class="segmented__btn" data-kind="small" aria-pressed="false">小章</button>
-            </div>
-
-            <label class="check-row mt-4">
+            <label class="check-row" id="perfEnabledRow">
               <input type="checkbox" id="perforationEnabled">
-              <span>在每頁右邊蓋騎縫章</span>
+              <span>啟用騎縫章（每頁右邊蓋大章 + 小章各一片）</span>
             </label>
+            <p class="stamp-attr-hint" id="perfNeedBothHint" hidden>需要先上傳大章與小章才能啟用騎縫章。</p>
 
             <div class="mt-4">
-              <span class="field-label">縱向位置（從頁面頂端起算）</span>
+              <span class="field-label">大章縱向位置（從頁面頂端起算）</span>
               <div class="range-field">
-                <input type="range" id="perfYSlider" min="5" max="95" value="50">
-                <span class="range-field__val" id="perfYVal">50%</span>
+                <input type="range" id="perfBigYSlider" min="5" max="95" value="30">
+                <span class="range-field__val" id="perfBigYVal">30%</span>
               </div>
             </div>
 
             <div class="mt-4">
-              <span class="field-label">章高度</span>
+              <span class="field-label">小章縱向位置</span>
+              <div class="range-field">
+                <input type="range" id="perfSmallYSlider" min="5" max="95" value="70">
+                <span class="range-field__val" id="perfSmallYVal">70%</span>
+              </div>
+            </div>
+
+            <div class="mt-4">
+              <span class="field-label">章高度（大 / 小章共用）</span>
               <div class="range-field">
                 <input type="range" id="perfHSlider" min="5" max="40" value="14">
                 <span class="range-field__val" id="perfHVal">14%</span>
@@ -353,7 +364,18 @@
               </div>
             </div>
 
-            <p class="stamp-attr-hint">章會被切成 <b id="perfNSlices">N</b> 等分（= 頁數），每頁右邊放對應切片。列印後右邊對齊堆疊可拼回完整章。</p>
+            <label class="check-row mt-4" id="perfTiltRow">
+              <input type="checkbox" id="perfTiltEnabled" checked>
+              <span>每片隨機傾斜 ±2°（模擬手蓋章）</span>
+            </label>
+            <div class="perf-tilt-row">
+              <button type="button" class="btn btn--secondary" id="perfRerollBtn">
+                <svg class="icon icon--sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 4v5h-5"/></svg>
+                重新隨機角度
+              </button>
+            </div>
+
+            <p class="stamp-attr-hint">大、小章會各自切成 <b id="perfNSlices">N</b> 等分（= 頁數），每頁右邊放兩片，獨立隨機傾斜。預覽看到什麼就是匯出結果。</p>
           </div>
         </div>
 
@@ -396,7 +418,8 @@
           <div>
             <div class="stamp-figure" id="stampFigure">
               <canvas id="pdfCanvas"></canvas>
-              <div class="perf-preview" id="perfPreview"></div>
+              <div class="perf-preview" id="perfPreviewBig"></div>
+              <div class="perf-preview" id="perfPreviewSmall"></div>
               <div class="stamp-layer" id="stampLayer"></div>
             </div>
             <div class="stamp-caption" id="stampCaption"></div>
@@ -447,15 +470,19 @@
       attrPanelNormal: $('attrPanelNormal'),
       attrPanelPerforation: $('attrPanelPerforation'),
       kindSegNormal: $('kindSegNormal'),
-      kindSegPerforation: $('kindSegPerforation'),
       sizeSlider: $('sizeSlider'), sizeVal: $('sizeVal'),
       rotationSlider: $('rotationSlider'), rotationVal: $('rotationVal'),
       opacitySlider: $('opacitySlider'), opacityVal: $('opacityVal'),
       attrHint: $('attrHint'),
       perforationEnabled: $('perforationEnabled'),
-      perfYSlider: $('perfYSlider'), perfYVal: $('perfYVal'),
+      perfEnabledRow: $('perfEnabledRow'),
+      perfNeedBothHint: $('perfNeedBothHint'),
+      perfBigYSlider: $('perfBigYSlider'), perfBigYVal: $('perfBigYVal'),
+      perfSmallYSlider: $('perfSmallYSlider'), perfSmallYVal: $('perfSmallYVal'),
       perfHSlider: $('perfHSlider'), perfHVal: $('perfHVal'),
       perfOpacitySlider: $('perfOpacitySlider'), perfOpacityVal: $('perfOpacityVal'),
+      perfTiltEnabled: $('perfTiltEnabled'),
+      perfRerollBtn: $('perfRerollBtn'),
       perfNSlices: $('perfNSlices'),
       pageSection: $('pageSection'), pageThumbs: $('pageThumbs'),
       exportBtn: $('exportBtn'), exportBtnLabel: $('exportBtnLabel'),
@@ -464,7 +491,8 @@
       successMsg: $('successMsg'), successText: $('successText'),
       previewEmpty: $('previewEmpty'), stampStage: $('stampStage'),
       stampFigure: $('stampFigure'), pdfCanvas: $('pdfCanvas'),
-      perfPreviewEl: $('perfPreview'),
+      perfPreviewBig: $('perfPreviewBig'),
+      perfPreviewSmall: $('perfPreviewSmall'),
       stampLayer: $('stampLayer'), stampCaption: $('stampCaption'),
       previewArea: $('previewArea')
     };
@@ -503,10 +531,13 @@
 
       perforation: {
         enabled: false,
-        kind: 'big',
-        cyRatio: 0.5,
+        bigYRatio: 0.3,
+        smallYRatio: 0.7,
         heightRatio: 0.14,
-        opacity: 1
+        opacity: 1,
+        tiltEnabled: true,
+        tiltRange: 2,                // 度 (±)
+        tilts: { big: [], small: [] }   // N 個角度（= 頁數），預覽 / 匯出共用
       },
 
       busy: false,
@@ -547,10 +578,14 @@
       return n;
     }
 
+    function hasPerforation() {
+      return state.perforation.enabled && !!getStamp('big') && !!getStamp('small');
+    }
+
     function updateExportBtn() {
       var hasPdf = !!state.pdfDoc;
       var hasNormal = countAllStamps() > 0;
-      var hasPerf = state.perforation.enabled && !!getStamp(state.perforation.kind);
+      var hasPerf = hasPerforation();
       var ok = hasPdf && (hasNormal || hasPerf);
       els.exportBtn.disabled = !ok || state.busy;
       if (!hasPdf) {
@@ -562,8 +597,25 @@
       } else {
         var parts = [];
         if (hasNormal) parts.push(countAllStamps() + ' 個一般章');
-        if (hasPerf) parts.push('騎縫章');
+        if (hasPerf) parts.push('騎縫章 ×2');
         els.exportBtnLabel.textContent = '匯出含章 PDF（' + parts.join(' + ') + '）';
+      }
+    }
+
+    function rollTilts() {
+      var N = state.totalPages || 0;
+      var R = state.perforation.tiltRange;
+      state.perforation.tilts.big = [];
+      state.perforation.tilts.small = [];
+      for (var i = 0; i < N; i++) {
+        state.perforation.tilts.big.push((Math.random() * 2 - 1) * R);
+        state.perforation.tilts.small.push((Math.random() * 2 - 1) * R);
+      }
+    }
+    function ensureTilts() {
+      var N = state.totalPages || 0;
+      if (state.perforation.tilts.big.length !== N || state.perforation.tilts.small.length !== N) {
+        rollTilts();
       }
     }
 
@@ -608,6 +660,7 @@
         els.stampStage.hidden = false;
         els.pageSection.hidden = false;
         els.perfNSlices.textContent = String(state.totalPages);
+        rollTilts();
 
         setProgress('渲染頁面…', 50);
         await renderCurrentPage();
@@ -634,19 +687,27 @@
       state.pdfDoc = null; state.pdfBytes = null;
       state.pdfName = ''; state.totalPages = 0; state.currentPage = 1;
       state.stamps = {}; state.selectedId = null; state.pageDims = {};
+      state.perforation.tilts = { big: [], small: [] };
       els.pdfFileName.classList.remove('is-shown');
       els.previewEmpty.hidden = false;
       els.stampStage.hidden = true;
       els.pageSection.hidden = true;
       while (els.pageThumbs.firstChild) els.pageThumbs.removeChild(els.pageThumbs.firstChild);
       while (els.stampLayer.firstChild) els.stampLayer.removeChild(els.stampLayer.firstChild);
-      els.perfPreviewEl.classList.remove('is-shown');
+      els.perfPreviewBig.classList.remove('is-shown');
+      els.perfPreviewSmall.classList.remove('is-shown');
       updateExportBtn();
     }
 
     // ---- 渲染當前頁面 ----
+    var _renderTask = null;
     async function renderCurrentPage() {
       if (!state.pdfDoc) return;
+      // 若上一個渲染還在跑，先取消（避免 pdf.js "same canvas multiple render" error）
+      if (_renderTask) {
+        try { _renderTask.cancel(); } catch (e) {}
+        _renderTask = null;
+      }
       var page = await state.pdfDoc.getPage(state.currentPage);
       var unscaled = page.getViewport({ scale: 1 });
       var avail = els.previewArea.getBoundingClientRect();
@@ -665,7 +726,14 @@
       els.stampLayer.style.width = canvas.width + 'px';
       els.stampLayer.style.height = canvas.height + 'px';
 
-      await page.render({ canvasContext: ctx, viewport: viewport }).promise;
+      _renderTask = page.render({ canvasContext: ctx, viewport: viewport });
+      try {
+        await _renderTask.promise;
+      } catch (e) {
+        if (e && e.name === 'RenderingCancelledException') { _renderTask = null; return; }
+        throw e;
+      }
+      _renderTask = null;
 
       state.pageDims[state.currentPage] = {
         pdfW: unscaled.width, pdfH: unscaled.height,
@@ -681,7 +749,7 @@
       if (!state.pdfDoc) { els.stampCaption.textContent = ''; return; }
       var arr = state.stamps[state.currentPage] || [];
       var parts = ['第 ' + state.currentPage + ' / ' + state.totalPages + ' 頁', arr.length + ' 個章'];
-      if (state.perforation.enabled && getStamp(state.perforation.kind)) parts.push('騎縫切片 ' + state.currentPage + '/' + state.totalPages);
+      if (hasPerforation()) parts.push('騎縫切片 ' + state.currentPage + '/' + state.totalPages + '（大 + 小）');
       els.stampCaption.textContent = parts.join(' · ');
     }
 
@@ -733,7 +801,7 @@
     }
 
     function refreshThumbBadges() {
-      var hasPerf = state.perforation.enabled && !!getStamp(state.perforation.kind);
+      var hasPerf = hasPerforation();
       els.pageThumbs.querySelectorAll('.page-thumb').forEach(function (item) {
         var p = parseInt(item.dataset.page, 10);
         var arr = state.stamps[p] || [];
@@ -803,7 +871,6 @@
 
         // 第一次上傳時自動選為 active
         if (!state.activeKind || !getStamp(state.activeKind)) state.activeKind = kind;
-        if (!getStamp(state.perforation.kind)) state.perforation.kind = kind;
 
         refreshKindUI();
         renderStampLayer();
@@ -836,15 +903,10 @@
         if (!found) state.selectedId = null;
       }
 
-      // 騎縫如果用這 kind，切到另一張或關掉
-      if (state.perforation.kind === kind) {
-        var other = kind === 'big' ? 'small' : 'big';
-        if (getStamp(other)) {
-          state.perforation.kind = other;
-        } else {
-          state.perforation.enabled = false;
-          els.perforationEnabled.checked = false;
-        }
+      // 騎縫需要大 + 小章都在；任一張被清掉就關掉騎縫
+      if (state.perforation.enabled) {
+        state.perforation.enabled = false;
+        els.perforationEnabled.checked = false;
       }
       if (state.activeKind === kind) {
         var other2 = kind === 'big' ? 'small' : 'big';
@@ -864,12 +926,13 @@
       var smallOK = !!getStamp('small');
       setSegmentedDisabled(els.kindSegNormal, 'big', !bigOK);
       setSegmentedDisabled(els.kindSegNormal, 'small', !smallOK);
-      setSegmentedDisabled(els.kindSegPerforation, 'big', !bigOK);
-      setSegmentedDisabled(els.kindSegPerforation, 'small', !smallOK);
       setSegmentedPressed(els.kindSegNormal, 'kind', state.activeKind);
-      setSegmentedPressed(els.kindSegPerforation, 'kind', state.perforation.kind);
       els.attrSection.classList.toggle('is-disabled', !bigOK && !smallOK);
-      els.perforationEnabled.disabled = !getStamp(state.perforation.kind);
+      // 騎縫需要兩張都在
+      var bothOK = bigOK && smallOK;
+      els.perforationEnabled.disabled = !bothOK;
+      els.perfEnabledRow.classList.toggle('is-disabled', !bothOK);
+      els.perfNeedBothHint.hidden = bothOK;
     }
 
     function setSegmentedPressed(seg, attr, val) {
@@ -906,29 +969,15 @@
       syncSliders();
     }
 
-    function setPerfKind(kind) {
-      if (!getStamp(kind)) {
-        showError(kind === 'big' ? '請先上傳大章。' : '請先上傳小章。');
-        return;
-      }
-      state.perforation.kind = kind;
-      setSegmentedPressed(els.kindSegPerforation, 'kind', kind);
-      els.perforationEnabled.disabled = false;
-      refreshPerforationPreview();
-      refreshThumbBadges();
-      updateCaption();
-      updateExportBtn();
-    }
-
     function setPerfEnabled(enabled) {
-      var perfStamp = getStamp(state.perforation.kind);
-      if (enabled && !perfStamp) {
-        showError('請先在章圖庫上傳「' + (state.perforation.kind === 'big' ? '大章' : '小章') + '」。');
+      if (enabled && (!getStamp('big') || !getStamp('small'))) {
+        showError('騎縫章需要先上傳大章與小章。');
         els.perforationEnabled.checked = false;
         return;
       }
       state.perforation.enabled = enabled;
       els.perforationEnabled.checked = enabled;
+      if (enabled) ensureTilts();
       refreshPerforationPreview();
       refreshThumbBadges();
       updateCaption();
@@ -1152,18 +1201,31 @@
       placeStamp(e.clientX - rect.left, e.clientY - rect.top);
     }
 
-    // ---- 騎縫章預覽 ----
+    // ---- 騎縫章預覽（大 + 小 兩個 overlay）----
     function refreshPerforationPreview() {
-      var overlay = els.perfPreviewEl;
       var perf = state.perforation;
-      var stamp = getStamp(perf.kind);
-      var on = state.pdfDoc && perf.enabled && stamp;
-      // 騎縫預覽在「一般模式」也顯示，讓使用者隨時看到該頁切片位置；只是無法拖曳
-      if (!on) { overlay.classList.remove('is-shown'); return; }
-
+      var bigStamp = getStamp('big'), smallStamp = getStamp('small');
+      var on = state.pdfDoc && perf.enabled && bigStamp && smallStamp;
+      if (!on) {
+        els.perfPreviewBig.classList.remove('is-shown');
+        els.perfPreviewSmall.classList.remove('is-shown');
+        return;
+      }
       var dims = state.pageDims[state.currentPage];
-      if (!dims) { overlay.classList.remove('is-shown'); return; }
+      if (!dims) {
+        els.perfPreviewBig.classList.remove('is-shown');
+        els.perfPreviewSmall.classList.remove('is-shown');
+        return;
+      }
+      ensureTilts();
+      renderPerfSlice(els.perfPreviewBig, bigStamp, perf.bigYRatio,
+        perf.tiltEnabled ? (perf.tilts.big[state.currentPage - 1] || 0) : 0, dims);
+      renderPerfSlice(els.perfPreviewSmall, smallStamp, perf.smallYRatio,
+        perf.tiltEnabled ? (perf.tilts.small[state.currentPage - 1] || 0) : 0, dims);
+    }
 
+    function renderPerfSlice(overlay, stamp, cyRatio, tiltDeg, dims) {
+      var perf = state.perforation;
       var canvasH = dims.canvasH, canvasW = dims.canvasW;
       var H = perf.heightRatio * canvasH;
       var iw = stamp.image.naturalWidth, ih = stamp.image.naturalHeight;
@@ -1177,11 +1239,12 @@
       overlay.style.width = sliceW + 'px';
       overlay.style.height = H + 'px';
       overlay.style.left = (canvasW - sliceW) + 'px';
-      overlay.style.top = (perf.cyRatio * canvasH - H / 2) + 'px';
+      overlay.style.top = (cyRatio * canvasH - H / 2) + 'px';
       overlay.style.opacity = String(perf.opacity);
       overlay.style.backgroundImage = 'url(' + stamp.url + ')';
       overlay.style.backgroundSize = fullW + 'px ' + H + 'px';
       overlay.style.backgroundPosition = sliceX + 'px 0px';
+      overlay.style.transform = 'rotate(' + tiltDeg + 'deg)';
       overlay.classList.add('is-shown');
     }
 
@@ -1191,7 +1254,8 @@
       if (!state.pdfDoc || !state.pdfBytes) { showError('請先上傳 PDF。'); return; }
       if (!hasAnyStamp()) { showError('請先上傳至少一張章圖。'); return; }
       var hasNormal = countAllStamps() > 0;
-      var hasPerf = state.perforation.enabled && !!getStamp(state.perforation.kind);
+      var hasPerf = hasPerforation();
+      if (hasPerf && (!getStamp('big') || !getStamp('small'))) { showError('騎縫章需要大章 + 小章都上傳。'); return; }
       if (!hasNormal && !hasPerf) { showError('請在 PDF 上放章或啟用騎縫章。'); return; }
       if (!window.PDFLib) { showError('pdf-lib 載入失敗，請重新整理頁面。'); return; }
 
@@ -1220,7 +1284,7 @@
         Object.keys(state.stamps).forEach(function (p) {
           state.stamps[p].forEach(function (s) { kindsUsed[s.kind] = true; });
         });
-        if (hasPerf) kindsUsed[state.perforation.kind] = true;
+        if (hasPerf) { kindsUsed.big = true; kindsUsed.small = true; }
 
         for (var kind in kindsUsed) {
           var s = getStamp(kind);
@@ -1275,48 +1339,65 @@
           }
         }
 
-        // 騎縫章：用 canvas 切 N 等分，逐頁 embed + draw
+        // 騎縫章：大 / 小章 各自切 N 等分，逐頁 embed + draw（各帶獨立隨機 tilt）
         if (hasPerf) {
+          ensureTilts();
           setProgress('繪製騎縫章…', 60);
-          var perfStamp = getStamp(state.perforation.kind);
           var N = state.totalPages;
-          var imgEl = perfStamp.image;
-          var iw = imgEl.naturalWidth, ih = imgEl.naturalHeight;
-          var sliceWImg = iw / N;
+          var perfKinds = ['big', 'small'];
 
-          for (var p2 = 1; p2 <= N; p2++) {
-            var slc = document.createElement('canvas');
-            slc.width = Math.max(1, Math.ceil(sliceWImg));
-            slc.height = ih;
-            var sctx = slc.getContext('2d');
-            sctx.drawImage(imgEl,
-              (p2 - 1) * sliceWImg, 0, sliceWImg, ih,
-              0, 0, slc.width, slc.height);
-            var blob = await new Promise(function (r) { slc.toBlob(r, 'image/png'); });
-            var sliceBytes = new Uint8Array(await blob.arrayBuffer());
-            var sliceImg = await pdfDoc.embedPng(sliceBytes);
+          for (var ki = 0; ki < perfKinds.length; ki++) {
+            var kk = perfKinds[ki];
+            var perfStamp = getStamp(kk);
+            var imgEl = perfStamp.image;
+            var iw = imgEl.naturalWidth, ih = imgEl.naturalHeight;
+            var sliceWImg = iw / N;
+            var cyRatio = kk === 'big' ? state.perforation.bigYRatio : state.perforation.smallYRatio;
+            var tilts = state.perforation.tilts[kk] || [];
 
-            var page2 = pdfDoc.getPage(p2 - 1);
-            var ps2 = page2.getSize();
-            var pdfW = ps2.width, pdfH = ps2.height;
+            for (var p2 = 1; p2 <= N; p2++) {
+              var slc = document.createElement('canvas');
+              slc.width = Math.max(1, Math.ceil(sliceWImg));
+              slc.height = ih;
+              var sctx = slc.getContext('2d');
+              sctx.drawImage(imgEl,
+                (p2 - 1) * sliceWImg, 0, sliceWImg, ih,
+                0, 0, slc.width, slc.height);
+              var blob = await new Promise(function (r) { slc.toBlob(r, 'image/png'); });
+              var sliceBytes = new Uint8Array(await blob.arrayBuffer());
+              var sliceImg = await pdfDoc.embedPng(sliceBytes);
 
-            var H_pdf = state.perforation.heightRatio * pdfH;
-            var scale = H_pdf / ih;
-            var actualW_pdf = slc.width * scale;
+              var page2 = pdfDoc.getPage(p2 - 1);
+              var ps2 = page2.getSize();
+              var pdfW = ps2.width, pdfH = ps2.height;
 
-            var x_pdf = pdfW - actualW_pdf;
-            var cy_pdf = pdfH * (1 - state.perforation.cyRatio);
-            var y_pdf = cy_pdf - H_pdf / 2;
+              var H_pdf = state.perforation.heightRatio * pdfH;
+              var scaleP = H_pdf / ih;
+              var W_pdf = slc.width * scaleP;
 
-            page2.drawImage(sliceImg, {
-              x: x_pdf, y: y_pdf,
-              width: actualW_pdf, height: H_pdf,
-              opacity: state.perforation.opacity
-            });
+              var tiltDeg = state.perforation.tiltEnabled ? (tilts[p2 - 1] || 0) : 0;
+              // 章中心 = 頁右邊緣往內半個 slice 寬，Y 由 cyRatio 決定（PDF 原點在左下）
+              var cxPdf = pdfW - W_pdf / 2;
+              var cyPdf = pdfH * (1 - cyRatio);
+              // pdf-lib 旋轉中心是 image 左下角；要旋轉後 image 中心落在 (cxPdf, cyPdf)
+              // CSS 順時針正 / pdf-lib 逆時針正 → θ_pdf = -tiltDeg
+              var thetaPdf = -tiltDeg * Math.PI / 180;
+              var cosT = Math.cos(thetaPdf), sinT = Math.sin(thetaPdf);
+              var x = cxPdf - (W_pdf / 2 * cosT - H_pdf / 2 * sinT);
+              var y = cyPdf - (W_pdf / 2 * sinT + H_pdf / 2 * cosT);
 
-            setProgress('繪製騎縫章…（' + p2 + ' / ' + N + ' 頁）',
-              60 + Math.round(p2 / N * 30));
-            await new Promise(function (r) { setTimeout(r, 0); });
+              page2.drawImage(sliceImg, {
+                x: x, y: y,
+                width: W_pdf, height: H_pdf,
+                rotate: PDFLib.degrees(-tiltDeg),
+                opacity: state.perforation.opacity
+              });
+
+              var pctBase = 60 + ki * 15;
+              setProgress('繪製騎縫章…（' + kk + ' ' + p2 + '/' + N + '）',
+                pctBase + Math.round(p2 / N * 15));
+              await new Promise(function (r) { setTimeout(r, 0); });
+            }
           }
         }
 
@@ -1335,7 +1416,7 @@
         setProgress('完成', 100);
         var summary = [];
         if (hasNormal) summary.push(countAllStamps() + ' 個一般章');
-        if (hasPerf) summary.push('騎縫章（' + state.totalPages + ' 頁）');
+        if (hasPerf) summary.push('騎縫章 ×2（大 + 小 各 ' + state.totalPages + ' 切片）');
         showSuccess('已匯出含章 PDF：' + summary.join(' + ') + '。');
         setTimeout(hideProgress, 600);
       } catch (err) {
@@ -1383,11 +1464,6 @@
       if (!btn || btn.disabled) return;
       setActiveKind(btn.dataset.kind);
     });
-    els.kindSegPerforation.addEventListener('click', function (e) {
-      var btn = e.target.closest('.segmented__btn');
-      if (!btn || btn.disabled) return;
-      setPerfKind(btn.dataset.kind);
-    });
     els.perforationEnabled.addEventListener('change', function () {
       setPerfEnabled(els.perforationEnabled.checked);
     });
@@ -1403,10 +1479,15 @@
       onSliderChange('opacity', parseFloat(els.opacitySlider.value) / 100);
     });
 
-    // 騎縫滑桿
-    els.perfYSlider.addEventListener('input', function () {
-      state.perforation.cyRatio = parseFloat(els.perfYSlider.value) / 100;
-      els.perfYVal.textContent = els.perfYSlider.value + '%';
+    // 騎縫滑桿（大 / 小 Y 獨立、章高度 / 透明度共用）
+    els.perfBigYSlider.addEventListener('input', function () {
+      state.perforation.bigYRatio = parseFloat(els.perfBigYSlider.value) / 100;
+      els.perfBigYVal.textContent = els.perfBigYSlider.value + '%';
+      refreshPerforationPreview();
+    });
+    els.perfSmallYSlider.addEventListener('input', function () {
+      state.perforation.smallYRatio = parseFloat(els.perfSmallYSlider.value) / 100;
+      els.perfSmallYVal.textContent = els.perfSmallYSlider.value + '%';
       refreshPerforationPreview();
     });
     els.perfHSlider.addEventListener('input', function () {
@@ -1417,6 +1498,15 @@
     els.perfOpacitySlider.addEventListener('input', function () {
       state.perforation.opacity = parseFloat(els.perfOpacitySlider.value) / 100;
       els.perfOpacityVal.textContent = els.perfOpacitySlider.value + '%';
+      refreshPerforationPreview();
+    });
+    els.perfTiltEnabled.addEventListener('change', function () {
+      state.perforation.tiltEnabled = els.perfTiltEnabled.checked;
+      refreshPerforationPreview();
+    });
+    els.perfRerollBtn.addEventListener('click', function () {
+      if (!state.totalPages) return;
+      rollTilts();
       refreshPerforationPreview();
     });
 

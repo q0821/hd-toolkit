@@ -471,3 +471,26 @@ AI 自動去背已「堪用」（imgly fp16 + 碎屑清理）；再往上：① 
 | 2026-05-26 | 騎縫章座標用比例（cyRatio / heightRatio）不用絕對 canvas px | 不同頁可能尺寸不同；用比例可以一致套用到所有頁 |
 | 2026-05-26 | 騎縫章每頁切片繪在 PDF 右邊緣（x = pdfW - sliceW），不允許移動 | 傳統騎縫章就是貼右邊緣；做成「自由位置」會讓 UX 變複雜，且實務上沒需求 |
 | 2026-05-26 | 騎縫預覽在「一般模式」也顯示（pointer-events:none） | 讓使用者隨時看到「這頁切片會出現在哪」，不必跳到騎縫 panel 才能確認；不會干擾點擊放置 |
+
+## 階段 13c：騎縫章 = 大 + 小章兩片 + 隨機傾斜（2026-05-27）
+- **拿掉 `perforation.kind`** — 騎縫章現在強制大 + 小章都要上傳才能啟用；checkbox 在缺一張時 disabled + 顯示「需要大章 + 小章」提示
+- **大 / 小章 Y 獨立**：兩條 slider（預設 30% / 70%）；章高度 + 透明度共用
+- **隨機傾斜**：state 加 `tiltEnabled` + `tiltRange = 2`（度）+ `tilts: {big: [N], small: [N]}`；大 / 小章獨立 roll（不共用同一組角度）
+  - `rollTilts()` 在 PDF 載入時呼叫、使用者按「重新隨機角度」按鈕呼叫
+  - `ensureTilts()` 在啟用 / 預覽 / 匯出時保底（如果 tilts 陣列長度 ≠ N 就重 roll）
+  - 關 tilt 不重 roll：「關 → 開」會回到之前的角度（穩定）
+- **預覽**：拆成 `#perfPreviewBig` + `#perfPreviewSmall` 兩個 overlay，各自 CSS `transform: rotate(Xdeg)` + `transform-origin: center`
+- **匯出**：對 big / small 各跑一輪 N 切片 → embedPng N×2 次 → drawImage 帶 `rotate: degrees(-tilt)`；中心固定（右邊緣往內 W/2、Y 由 cyRatio）、用三角函數反推 image 左下角座標（pdf-lib 的 drawImage 旋轉中心是左下角）
+- **副帶 bugfix**：`renderCurrentPage` 在切頁太快時會撞 pdf.js「Cannot use the same canvas during multiple render() operations」錯誤；加 `_renderTask` 全域變數 + 新 render 開始前先 `.cancel()` 舊的、catch `RenderingCancelledException` 不冒泡
+- **狀態**：完成。無頭驗證：①大章 only checkbox disabled、上傳小章後 enabled ②啟用後第 1 頁 tilt（big -0.22°, small -1.70°）皆在 ±2° 內且互相獨立 ③ successText「騎縫章 ×2（大 + 小 各 4 切片）」④ 匯出 4 頁解析：每頁紅色像素都集中在右邊 + 上半部（大章在 Y=30%）、藍色集中在右邊 + 下半部（小章 Y=70%），各頁切片像素數 1300/2800/2800/1300 對應大章 / 小章切到「弧端 / 圓心粗條」的對稱分布 ⑤快速連點 thumb 不再觸發 canvas race condition
+
+## 追加決策紀錄
+| Date | Decision | Rationale |
+|------|----------|-----------|
+| 2026-05-27 | 騎縫章強制「大 + 小章都要」，不再選擇單張 | 使用者要求；實務上騎縫章 = 大小章一起蓋，原先「擇一」的設計是過度抽象 |
+| 2026-05-27 | 大 / 小章 Y 獨立、章高度共用 | Y 位置常見「大上小下」或「大下小上」，獨立才能各自調；高度共用因為通常兩張章大小一致 |
+| 2026-05-27 | tilts 一次 roll、給「重新隨機」按鈕；不每次匯出 re-roll | 預覽 = 匯出（WYSIWYG）；要再洗就按按鈕；避免「預覽看到的不是匯出結果」 |
+| 2026-05-27 | 大 / 小章 tilt 各自獨立 roll | 真實蓋章手不會兩張同步斜，獨立看起來更自然；技術成本一樣 |
+| 2026-05-27 | 預設 tilt enabled（checkbox 預先打勾） | 使用者要求「都隨機傾斜」，預設打開符合預期；想關掉再關 |
+| 2026-05-27 | tilt 範圍固定 ±2°，不出 slider | 多一條 slider 沒太大價值；±2° 是常見的微微歪斜程度，要更大會看起來「故意做歪」 |
+| 2026-05-27 | renderCurrentPage 加 `_renderTask.cancel()` 取消競態 | 切頁太快時 pdf.js 會丟 race error；加 cancel + catch RenderingCancelledException 是 pdf.js 官方建議做法 |
