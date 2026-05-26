@@ -408,3 +408,44 @@ AI 自動去背已「堪用」（imgly fp16 + 碎屑清理）；再往上：① 
 | 2026-05-12 | AI key 從工具頁搬成「站台設定」：共用 `settings.js` + header 齒輪 + modal，key 用 `KEY_DEFS` 清單渲染 | 使用者要求；未來其他工具也會需要 key，用清單擴充比每個工具各做一套輸入界面好；跟 `theme.js` 同一個「每頁載的共用小模組」模式 |
 | 2026-05-12 | 齒輪由 `settings.js` 注入到 header（不改各頁 HTML 的 header），SVG 用 `createElementNS` 而非 innerHTML | DRY（圖示一份）；innerHTML 被 pre-write hook 擋 |
 | 2026-05-12 | sticker-ai 的 key 欄位拿掉、只留狀態 + 「開啟設定」連結；模型 / 品質留在頁上 | key 是站台層級、模型是工具層級；避免兩處重複輸入造成混淆 |
+
+---
+
+# 追加：發票章加蓋工具 `/invoice-stamp`（2026-05-26）
+
+依使用者提供的 `PRD_發票章加蓋工具_v1.0.md`（HD-TOOL-004）做。純前端，pdf.js 渲染 / pdf-lib 合成輸出；不需要動到 `app/tools/`。
+
+## 階段 13：發票章加蓋工具 `/invoice-stamp`
+**目標**：上傳 PDF → 上傳章圖（PNG 去背 / JPG）→ 點 PDF 任意位置放章（以點為中心）→ 拖曳調位置、滑桿調大小 / 旋轉 / 透明度 → 多頁分別處理 → 用 pdf-lib 合成輸出 `stamped_<原檔名>.pdf`，全程瀏覽器內完成
+- **CDN**：pdf.js v3.11.174（cdnjs，含 worker）+ pdf-lib v1.17.1（cdnjs），沿用既有 CDN 慣例
+- **版面**（沿用 `.tool-layout` 左右分割 + 既有 `app.css` 元件）：
+  - 左 `.tool-layout__controls`：`01` 上傳 PDF dropzone（accept=application/pdf）｜ `02` 上傳發票章 dropzone（accept=image/png,image/jpeg）+ 棋盤格底縮圖預覽（看得出透明）+ 移除鈕 ｜ `03` 章屬性三條 `.range`（大小 30–400px / 旋轉 −180°~+180° / 透明度 10–100 %，未上傳章 + 沒章時 dimmed）｜ `04` 頁面縮圖列表（PDF 未上傳前 hidden；vertical scroll；當前頁 `--accent` 框 + 已蓋章頁右上 chip 顯示章數）｜ `.btn-primary` 「匯出含章 PDF」+ `.progress` / `.message`
+  - 右 `.tool-layout__preview`：空狀態 → 已上傳 PDF 後是 canvas + 絕對定位 `.stamp-layer` overlay；點 layer 空白以點為中心放章；章為 `<div>` 含 `<img>`，`transform: translate(-50%,-50%) rotate(Xdeg)` + `opacity`；選取顯示虛框 + 右上 ✕ 刪除鈕；底部 caption「第 X / N 頁 · K 個章」
+- **State**：`{pdfDoc, pdfBytes, pdfName, totalPages, currentPage, pageDims{}, stampImage, stampMime, stampBytes, stamps{}, selectedId, draft{size,rotation,opacity}, busy, nextId}`，stamp = `{id, cx, cy, size, rotation, opacity}` — `cx/cy/size` 用 canvas pixel 直接存（不做 resize 重渲染）
+- **滑桿行為**：選取章時 = 即時改該章 + 同步到 draft；未選取 = 只改 draft（下次新放章用的預設）
+- **座標換算**（對齊 PRD §3.2）：`ratio = pdfW / canvasW`；章中心在 PDF 座標 `(cxPdf = cx*ratio, cyPdf = pdfH - cy*ratio)`；pdf-lib `drawImage` 的旋轉中心是 image 左下角，所以為了讓「旋轉後 image 中心對到 (cxPdf, cyPdf)」要算 `x = cxPdf - (W/2*cosT - H/2*sinT)`、`y = cyPdf - (W/2*sinT + H/2*cosT)`，θ = `-rotation*π/180`（CSS 順時針正、pdf-lib 逆時針正 → 角度反向，pdf-lib 的 rotate 同樣傳 `-rotation`）
+- **章長寬**：保留章圖原始長寬比，size = 較長邊（寬比高長 → 寬=size、高=size/AR；反之亦然）
+- **匯出**：`PDFDocument.load(pdfBytes, {ignoreEncryption:false})`（加密 PDF catch 顯示錯誤）→ `embedPng/Jpg(stampBytes)` 一次 → 走訪 stamps 各頁 `page.drawImage()` → `pdfDoc.save()` → Blob → 下載 `stamped_<原檔名>.pdf`
+- **邊界**：非 PDF / 非 PNG/JPG → `.message--error`；> 50 MB → warning 但繼續；加密 PDF → 提示「無法在加密 PDF 上加蓋章」；pdf-lib / pdf.js CDN 載入失敗 → 提示
+- **不做（PRD §6.1 明列）**：觸控優化、Undo/Redo、多章圖同檔切換批次調整、加密 PDF
+- `main.py` 加 `GET /invoice-stamp`；`static/index.html` 加 `.tool-card`（PDF + 章 icon）+ meta description 補一條；`README.md` 工具表 + 目錄結構補一條 + 第三方致謝補 pdf.js / pdf-lib
+
+**成功標準**（對齊 PRD §7）：
+- 多頁 PDF 上傳，縮圖列表正確；點縮圖切頁
+- PNG 去背章預覽和匯出後皆透明
+- 點 PDF 放章 → 中心對齊點擊點；拖曳後切頁 / 回來位置保留
+- 三個滑桿即時更新預覽；選取 → 出現刪除鈕 → 刪除後章移除
+- 多頁各自蓋章後匯出，章座標 / 角度 / 透明度與預覽一致
+- 匯出 PDF 用瀏覽器與 Acrobat 開啟皆無損
+- DevTools network 確認 PDF 完全沒上傳（除了 CDN）
+
+**狀態**：實作完成（單檔 `static/invoice-stamp/index.html` ~750 行，pdf.js v3.11.174 渲染 + pdf-lib v1.17.1 合成；左控制右預覽、章拖曳 / 選取 / 刪除、縮圖列表 + chip 章數、3 滑桿即時同步、加密 PDF 偵測、亮 / 暗模式繼承 app.css）— **待使用者實機驗證**（多頁 PDF + 透明 PNG 章、座標精準度、Acrobat 開啟）
+
+## 追加決策紀錄
+| Date | Decision | Rationale |
+|------|----------|-----------|
+| 2026-05-26 | 沿用 `.tool-layout` 左右兩欄、頁面縮圖塞進左欄 section 04（不開第三欄） | 維持與其他工具一致的響應式行為與心智模型；縮圖牆做成 vertical scroll 配 max-height，左欄夠用 |
+| 2026-05-26 | 章位置 / 大小用 canvas pixel 直接存，不做視窗 resize 重渲染 | 跟 image-slicer / bg-remover 同處理方式，預覽尺寸在 PDF 載入當下定下來，避免 resize 連動 stamps 漂移的複雜度 |
+| 2026-05-26 | 章保留原始長寬比，size = 較長邊（PRD 公式以「正方形 size」描述但實務上章常非完全正方形） | 大多數公司章 / 發票章是圓形或方形（接近 1:1），少數橫式章圖（如品名章）非正方；保留長寬比比強制拉成正方形實用 |
+| 2026-05-26 | pdf-lib 旋轉中心是 image 左下角而非 stamp center，匯出時用三角函式反推左下角座標 | 文件實測；直接傳 `cxPdf - W/2, cyPdf - H/2` 在 rotation = 0 時對，但旋轉後 stamp 中心會偏移；補上 cos / sin 修正 |
+| 2026-05-26 | 滑桿同時編輯「選取的章」和「下次新章預設值」 | 直觀：拉到喜歡的大小 → 點下一個位置會用同樣大小；不用每次重設 |

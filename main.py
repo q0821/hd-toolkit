@@ -65,6 +65,12 @@ async def page_sticker_ai():
     return _page("sticker-ai", "index.html")
 
 
+# 發票章加蓋工具頁面（純前端：pdf.js 渲染、pdf-lib 合成輸出）
+@app.get("/invoice-stamp", include_in_schema=False)
+async def page_invoice_stamp():
+    return _page("invoice-stamp", "index.html")
+
+
 @app.get("/api/health")
 async def health_check():
     """健康檢查端點。"""

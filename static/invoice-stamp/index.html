@@ -1,0 +1,1020 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>發票章加蓋 · HD 的工具箱</title>
+  <meta name="description" content="在 PDF 上加蓋發票章：點擊放置、拖曳調整、控制大小 / 旋轉 / 透明度，多頁分別處理 — 全部在瀏覽器裡完成，檔案不上傳。">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="/static/shared/app.css">
+  <script src="/static/shared/theme.js"></script>
+  <script src="/static/shared/settings.js"></script>
+  <style>
+    /* ===== 發票章工具專屬樣式（共用元件在 app.css）===== */
+
+    /* 章圖上傳後的小預覽（棋盤格底，看得出透明） */
+    .stamp-preview-wrap {
+      display: none;
+      align-items: center;
+      gap: var(--space-3);
+      margin-top: var(--space-3);
+      padding: var(--space-3);
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+    }
+    .stamp-preview-wrap.is-shown { display: flex; }
+    .stamp-preview-thumb {
+      width: 56px; height: 56px; flex-shrink: 0; border-radius: 6px; overflow: hidden;
+      background-color: #fff;
+      background-image:
+        linear-gradient(45deg, #d8d8d8 25%, transparent 25%),
+        linear-gradient(-45deg, #d8d8d8 25%, transparent 25%),
+        linear-gradient(45deg, transparent 75%, #d8d8d8 75%),
+        linear-gradient(-45deg, transparent 75%, #d8d8d8 75%);
+      background-size: 14px 14px;
+      background-position: 0 0, 0 7px, 7px -7px, -7px 0;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .stamp-preview-thumb img { max-width: 100%; max-height: 100%; }
+    .stamp-preview-meta {
+      flex: 1; min-width: 0; font-size: 13px; color: var(--text-muted);
+      display: flex; flex-direction: column; gap: 2px;
+    }
+    .stamp-preview-meta .name { color: var(--text); font-family: var(--font-mono); font-size: 12px;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+    /* 屬性區三條滑桿 */
+    .stamp-attr-hint {
+      font-size: 12px; color: var(--text-dim); margin-top: var(--space-2);
+    }
+
+    /* 頁面縮圖列表 */
+    .page-thumbs {
+      display: flex; flex-direction: column; gap: var(--space-2);
+      max-height: 340px; overflow-y: auto;
+      padding: var(--space-2); background: var(--surface-2);
+      border: 1px solid var(--border); border-radius: var(--radius-sm);
+    }
+    .page-thumb {
+      position: relative;
+      display: flex; align-items: center; gap: var(--space-3);
+      padding: 6px; cursor: pointer;
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 6px;
+      transition: border-color 0.15s, background-color 0.15s;
+    }
+    .page-thumb:hover { border-color: var(--accent-border); }
+    .page-thumb.is-active {
+      border-color: var(--accent);
+      background: var(--accent-subtle);
+    }
+    .page-thumb__canvas {
+      width: 56px; height: auto; flex-shrink: 0; border-radius: 4px; background: #fff;
+      box-shadow: var(--shadow-sm);
+    }
+    .page-thumb__label {
+      font-family: var(--font-mono); font-size: 13px; color: var(--text);
+    }
+    .page-thumb__badge {
+      position: absolute; top: 4px; right: 6px;
+      min-width: 18px; height: 18px; padding: 0 5px;
+      font-family: var(--font-mono); font-size: 11px; font-weight: 500;
+      color: var(--accent-fg); background: var(--accent);
+      border-radius: var(--radius-full);
+      display: inline-flex; align-items: center; justify-content: center;
+    }
+
+    /* 右側預覽舞台 */
+    .stamp-stage {
+      width: 100%; height: 100%;
+      display: flex; align-items: center; justify-content: center;
+      overflow: auto;
+    }
+    .stamp-figure {
+      position: relative; display: inline-block; line-height: 0;
+      background: #fff;
+      box-shadow: var(--shadow-md);
+      border-radius: 2px;
+    }
+    .stamp-figure canvas { display: block; }
+
+    /* 章 overlay 層 */
+    .stamp-layer {
+      position: absolute; inset: 0;
+      cursor: crosshair;
+    }
+    .stamp-item {
+      position: absolute;
+      transform-origin: center center;
+      cursor: grab;
+      user-select: none;
+      touch-action: none;
+    }
+    .stamp-item.is-dragging { cursor: grabbing; }
+    .stamp-item img {
+      display: block; width: 100%; height: 100%;
+      pointer-events: none;
+    }
+    .stamp-item.is-selected::before {
+      content: '';
+      position: absolute; inset: -3px;
+      border: 1.5px dashed var(--accent);
+      border-radius: 2px;
+      pointer-events: none;
+    }
+    .stamp-item__delete {
+      position: absolute;
+      top: -12px; right: -12px;
+      width: 24px; height: 24px;
+      display: none;
+      align-items: center; justify-content: center;
+      background: var(--surface);
+      color: var(--error);
+      border: 1.5px solid var(--error);
+      border-radius: var(--radius-full);
+      cursor: pointer; padding: 0;
+      box-shadow: var(--shadow-sm);
+      transition: background-color 0.15s, color 0.15s;
+    }
+    .stamp-item__delete:hover { background: var(--error); color: var(--accent-fg); }
+    .stamp-item.is-selected .stamp-item__delete { display: inline-flex; }
+
+    /* 預覽底部 caption */
+    .stamp-caption {
+      margin-top: var(--space-3);
+      text-align: center;
+      font-family: var(--font-mono); font-size: 12px;
+      color: var(--text-dim);
+    }
+
+    /* 章屬性區停用時 */
+    .section.is-disabled { opacity: 0.5; pointer-events: none; }
+
+    /* btn-block + icon */
+    .btn--block .icon { width: 18px; height: 18px; }
+
+    /* 預覽空狀態的提示行 */
+    .preview-empty__hint {
+      margin-top: var(--space-3);
+      font-size: 12px;
+      color: var(--text-dim);
+    }
+  </style>
+</head>
+<body>
+
+  <header class="app-header">
+    <div class="app-header__row">
+      <a href="/" class="brand">HD 的工具箱</a>
+      <span class="crumb-sep">/</span>
+      <span class="crumb-cur">發票章加蓋</span>
+      <span class="app-header__spacer"></span>
+      <a href="/" class="btn btn--ghost" style="padding:6px 10px;font-size:13px">
+        <svg class="icon icon--sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+        回工具箱
+      </a>
+      <button type="button" class="theme-toggle" id="themeToggle" aria-label="切換亮 / 暗模式" title="切換亮 / 暗模式">
+        <svg class="icon icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
+        <svg class="icon icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <main class="app-main app-main--full">
+    <div class="tool-layout">
+
+      <!-- ===== 左：控制 ===== -->
+      <div class="tool-layout__controls">
+
+        <div class="section">
+          <div class="section__label"><span class="section__num">01</span> 上傳 PDF</div>
+          <div class="dropzone" id="pdfDropzone">
+            <input type="file" id="pdfInput" accept="application/pdf,.pdf" hidden>
+            <svg class="dropzone__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M9 13h6M9 17h6M9 9h1"/></svg>
+            <div class="dropzone__title">拖曳 PDF 到這裡</div>
+            <div class="dropzone__hint">或點擊選擇檔案</div>
+            <span class="dropzone__file" id="pdfFileName"></span>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section__label"><span class="section__num">02</span> 上傳發票章</div>
+          <div class="dropzone dropzone--compact" id="stampDropzone">
+            <input type="file" id="stampInput" accept="image/png,image/jpeg,.png,.jpg,.jpeg" hidden>
+            <svg class="dropzone__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="10" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
+            <div class="dropzone__title">拖曳章圖到這裡</div>
+            <div class="dropzone__hint">PNG（建議去背）或 JPG</div>
+          </div>
+          <div class="stamp-preview-wrap" id="stampPreviewWrap">
+            <div class="stamp-preview-thumb"><img id="stampPreviewImg" alt="章預覽"></div>
+            <div class="stamp-preview-meta">
+              <span class="name" id="stampFileName"></span>
+              <span id="stampSizeText"></span>
+            </div>
+            <button type="button" class="btn btn--ghost" id="stampClearBtn" style="padding:6px 10px;font-size:12px" title="移除章圖">
+              <svg class="icon icon--sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6L6 18M6 6l12 12"/></svg>
+            </button>
+          </div>
+        </div>
+
+        <div class="section" id="attrSection">
+          <div class="section__label"><span class="section__num">03</span> 章屬性</div>
+
+          <span class="field-label">大小</span>
+          <div class="range-field">
+            <input type="range" id="sizeSlider" min="30" max="400" value="120">
+            <span class="range-field__val" id="sizeVal">120</span>
+          </div>
+
+          <div class="mt-4">
+            <span class="field-label">旋轉</span>
+            <div class="range-field">
+              <input type="range" id="rotationSlider" min="-180" max="180" value="0">
+              <span class="range-field__val" id="rotationVal">0°</span>
+            </div>
+          </div>
+
+          <div class="mt-4">
+            <span class="field-label">透明度</span>
+            <div class="range-field">
+              <input type="range" id="opacitySlider" min="10" max="100" value="100">
+              <span class="range-field__val" id="opacityVal">100%</span>
+            </div>
+          </div>
+
+          <p class="stamp-attr-hint" id="attrHint">點 PDF 任意位置以放置章。先選一個章再調滑桿可以修改該章。</p>
+        </div>
+
+        <div class="section" id="pageSection" hidden>
+          <div class="section__label"><span class="section__num">04</span> 頁面</div>
+          <div class="page-thumbs" id="pageThumbs"></div>
+        </div>
+
+        <button type="button" class="btn btn--primary btn--block" id="exportBtn" disabled>
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5M12 15V3"/></svg>
+          <span id="exportBtnLabel">上傳 PDF 與發票章後可匯出</span>
+        </button>
+
+        <div class="progress" id="progress">
+          <div class="progress__header">
+            <span class="progress__label">處理中</span>
+            <span class="progress__status" id="progressStatus"></span>
+          </div>
+          <div class="progress__track"><div class="progress__bar" id="progressBar"></div></div>
+        </div>
+
+        <div class="message message--error" id="errorMsg">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M15 9l-6 6M9 9l6 6"/></svg>
+          <span id="errorText"></span>
+        </div>
+        <div class="message message--success" id="successMsg">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><path d="M22 4L12 14.01l-3-3"/></svg>
+          <span id="successText"></span>
+        </div>
+      </div>
+
+      <!-- ===== 右：預覽 ===== -->
+      <div class="tool-layout__preview" id="previewArea">
+        <div class="preview-empty" id="previewEmpty">
+          <svg class="preview-empty__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
+          <p>上傳 PDF 後可在此放置發票章</p>
+          <p class="preview-empty__hint">所有處理在瀏覽器內完成，檔案不會上傳。</p>
+        </div>
+        <div class="stamp-stage" id="stampStage" hidden>
+          <div>
+            <div class="stamp-figure" id="stampFigure">
+              <canvas id="pdfCanvas"></canvas>
+              <div class="stamp-layer" id="stampLayer"></div>
+            </div>
+            <div class="stamp-caption" id="stampCaption"></div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </main>
+
+  <!-- pdf.js（PDF 渲染與解析）-->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+  <!-- pdf-lib（PDF 合成輸出）-->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+  <script>
+  (function () {
+    'use strict';
+
+    // ---- pdf.js worker ----
+    if (window.pdfjsLib) {
+      pdfjsLib.GlobalWorkerOptions.workerSrc =
+        'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    }
+
+    var SVG_NS = 'http://www.w3.org/2000/svg';
+    function makeSvg(viewBox, paths, size) {
+      var svg = document.createElementNS(SVG_NS, 'svg');
+      svg.setAttribute('viewBox', viewBox);
+      svg.setAttribute('fill', 'none');
+      svg.setAttribute('stroke', 'currentColor');
+      svg.setAttribute('stroke-width', '2');
+      svg.setAttribute('stroke-linecap', 'round');
+      svg.setAttribute('stroke-linejoin', 'round');
+      if (size) { svg.setAttribute('width', String(size)); svg.setAttribute('height', String(size)); }
+      paths.forEach(function (d) {
+        var p = document.createElementNS(SVG_NS, 'path');
+        p.setAttribute('d', d);
+        svg.appendChild(p);
+      });
+      return svg;
+    }
+
+    var $ = function (id) { return document.getElementById(id); };
+    var els = {
+      pdfDropzone: $('pdfDropzone'), pdfInput: $('pdfInput'), pdfFileName: $('pdfFileName'),
+      stampDropzone: $('stampDropzone'), stampInput: $('stampInput'),
+      stampPreviewWrap: $('stampPreviewWrap'), stampPreviewImg: $('stampPreviewImg'),
+      stampFileName: $('stampFileName'), stampSizeText: $('stampSizeText'),
+      stampClearBtn: $('stampClearBtn'),
+      attrSection: $('attrSection'), attrHint: $('attrHint'),
+      sizeSlider: $('sizeSlider'), sizeVal: $('sizeVal'),
+      rotationSlider: $('rotationSlider'), rotationVal: $('rotationVal'),
+      opacitySlider: $('opacitySlider'), opacityVal: $('opacityVal'),
+      pageSection: $('pageSection'), pageThumbs: $('pageThumbs'),
+      exportBtn: $('exportBtn'), exportBtnLabel: $('exportBtnLabel'),
+      progress: $('progress'), progressBar: $('progressBar'), progressStatus: $('progressStatus'),
+      errorMsg: $('errorMsg'), errorText: $('errorText'),
+      successMsg: $('successMsg'), successText: $('successText'),
+      previewEmpty: $('previewEmpty'), stampStage: $('stampStage'),
+      stampFigure: $('stampFigure'), pdfCanvas: $('pdfCanvas'),
+      stampLayer: $('stampLayer'), stampCaption: $('stampCaption'),
+      previewArea: $('previewArea')
+    };
+
+    // ---- state ----
+    var state = {
+      pdfDoc: null,          // pdf.js document
+      pdfBytes: null,        // Uint8Array — 給 pdf-lib 用（保留原始 bytes）
+      pdfName: '',
+      totalPages: 0,
+      currentPage: 1,
+      pageDims: {},          // { pageNum: {pdfW, pdfH, canvasW, canvasH} }
+      stampImage: null,      // HTMLImageElement
+      stampMime: '',         // 'image/png' | 'image/jpeg'
+      stampBytes: null,      // Uint8Array — 給 pdf-lib 用
+      stampFile: '',
+      stamps: {},            // { pageNum: [{id, cx, cy, size, rotation, opacity}] }
+      selectedId: null,
+      draft: { size: 120, rotation: 0, opacity: 1 },
+      busy: false,
+      nextId: 1
+    };
+
+    // ---- 工具：訊息 / 進度 ----
+    function showError(msg) {
+      els.errorText.textContent = msg;
+      els.errorMsg.classList.add('is-shown');
+      els.successMsg.classList.remove('is-shown');
+    }
+    function showSuccess(msg) {
+      els.successText.textContent = msg;
+      els.successMsg.classList.add('is-shown');
+      els.errorMsg.classList.remove('is-shown');
+    }
+    function hideMessages() {
+      els.errorMsg.classList.remove('is-shown');
+      els.successMsg.classList.remove('is-shown');
+    }
+    function setProgress(label, pct) {
+      els.progress.classList.add('is-shown');
+      els.progressStatus.textContent = label;
+      els.progressBar.style.width = Math.max(0, Math.min(100, pct)) + '%';
+    }
+    function hideProgress() { els.progress.classList.remove('is-shown'); }
+
+    function formatBytes(n) {
+      if (n < 1024) return n + ' B';
+      if (n < 1024 * 1024) return (n / 1024).toFixed(1) + ' KB';
+      return (n / 1024 / 1024).toFixed(1) + ' MB';
+    }
+
+    function countAllStamps() {
+      var n = 0;
+      Object.keys(state.stamps).forEach(function (k) { n += state.stamps[k].length; });
+      return n;
+    }
+
+    function updateExportBtn() {
+      var hasAny = state.pdfDoc && state.stampImage && countAllStamps() > 0;
+      els.exportBtn.disabled = !hasAny || state.busy;
+      if (!state.pdfDoc) {
+        els.exportBtnLabel.textContent = '上傳 PDF 與發票章後可匯出';
+      } else if (!state.stampImage) {
+        els.exportBtnLabel.textContent = '上傳發票章後可匯出';
+      } else if (!hasAny) {
+        els.exportBtnLabel.textContent = '點 PDF 放上至少一個章';
+      } else {
+        els.exportBtnLabel.textContent = '匯出含章 PDF';
+      }
+    }
+
+    // ---- PDF 載入 ----
+    function readFileAsArrayBuffer(file) {
+      return new Promise(function (resolve, reject) {
+        var r = new FileReader();
+        r.onload = function () { resolve(r.result); };
+        r.onerror = function () { reject(new Error('讀取檔案失敗')); };
+        r.readAsArrayBuffer(file);
+      });
+    }
+
+    async function loadPdf(file) {
+      hideMessages();
+      if (!file) return;
+      if (file.type !== 'application/pdf' && !/\.pdf$/i.test(file.name)) {
+        showError('請選擇 PDF 檔案。');
+        return;
+      }
+      if (file.size > 50 * 1024 * 1024) {
+        showError('檔案超過 50 MB，瀏覽器可能無法順利處理。可嘗試繼續，但匯出可能較慢或失敗。');
+      }
+      try {
+        state.busy = true;
+        setProgress('讀取 PDF…', 10);
+        var ab = await readFileAsArrayBuffer(file);
+        // pdf.js 載入後會把 buffer 取走（detach），給 pdf-lib 留一份複本
+        state.pdfBytes = new Uint8Array(ab.slice(0));
+        var loadingTask = pdfjsLib.getDocument({ data: new Uint8Array(ab) });
+        var pdf = await loadingTask.promise;
+        state.pdfDoc = pdf;
+        state.pdfName = file.name.replace(/\.pdf$/i, '') || 'document';
+        state.totalPages = pdf.numPages;
+        state.currentPage = 1;
+        state.stamps = {};
+        state.selectedId = null;
+        state.pageDims = {};
+
+        els.pdfFileName.textContent = file.name + ' · ' + state.totalPages + ' 頁';
+        els.pdfFileName.classList.add('is-shown');
+        els.previewEmpty.hidden = true;
+        els.stampStage.hidden = false;
+        els.pageSection.hidden = false;
+
+        setProgress('渲染頁面…', 50);
+        await renderCurrentPage();
+        await buildThumbs();
+        hideProgress();
+        updateExportBtn();
+      } catch (err) {
+        hideProgress();
+        console.error(err);
+        var msg = String(err && err.message || err);
+        if (/password/i.test(msg) || /encrypt/i.test(msg)) {
+          showError('無法開啟受密碼保護的 PDF。請先解除密碼後再試。');
+        } else {
+          showError('PDF 載入失敗：' + msg);
+        }
+        resetPdf();
+      } finally {
+        state.busy = false;
+        updateExportBtn();
+      }
+    }
+
+    function resetPdf() {
+      state.pdfDoc = null; state.pdfBytes = null;
+      state.pdfName = ''; state.totalPages = 0; state.currentPage = 1;
+      state.stamps = {}; state.selectedId = null; state.pageDims = {};
+      els.pdfFileName.classList.remove('is-shown');
+      els.previewEmpty.hidden = false;
+      els.stampStage.hidden = true;
+      els.pageSection.hidden = true;
+      while (els.pageThumbs.firstChild) els.pageThumbs.removeChild(els.pageThumbs.firstChild);
+      while (els.stampLayer.firstChild) els.stampLayer.removeChild(els.stampLayer.firstChild);
+      updateExportBtn();
+    }
+
+    // ---- 渲染當前頁面到右側 canvas ----
+    async function renderCurrentPage() {
+      if (!state.pdfDoc) return;
+      var page = await state.pdfDoc.getPage(state.currentPage);
+      var unscaled = page.getViewport({ scale: 1 });
+      // 依預覽區可用尺寸決定 scale（首次渲染為主，不做 resize 重算）
+      var avail = els.previewArea.getBoundingClientRect();
+      var maxW = Math.max(320, avail.width - 64);
+      var maxH = Math.max(320, avail.height - 96); // 留底部 caption 空間
+      var scale = Math.min(maxW / unscaled.width, maxH / unscaled.height, 2);
+      if (!isFinite(scale) || scale <= 0) scale = 1;
+      var viewport = page.getViewport({ scale: scale });
+
+      var canvas = els.pdfCanvas;
+      var ctx = canvas.getContext('2d');
+      canvas.width = Math.floor(viewport.width);
+      canvas.height = Math.floor(viewport.height);
+      canvas.style.width = canvas.width + 'px';
+      canvas.style.height = canvas.height + 'px';
+      els.stampLayer.style.width = canvas.width + 'px';
+      els.stampLayer.style.height = canvas.height + 'px';
+
+      await page.render({ canvasContext: ctx, viewport: viewport }).promise;
+
+      state.pageDims[state.currentPage] = {
+        pdfW: unscaled.width, pdfH: unscaled.height,
+        canvasW: canvas.width, canvasH: canvas.height
+      };
+
+      renderStampLayer();
+      els.stampCaption.textContent = '第 ' + state.currentPage + ' / ' + state.totalPages + ' 頁 · ' +
+        ((state.stamps[state.currentPage] || []).length) + ' 個章';
+    }
+
+    // ---- 縮圖列 ----
+    async function buildThumbs() {
+      while (els.pageThumbs.firstChild) els.pageThumbs.removeChild(els.pageThumbs.firstChild);
+      for (var i = 1; i <= state.totalPages; i++) {
+        var item = document.createElement('div');
+        item.className = 'page-thumb' + (i === state.currentPage ? ' is-active' : '');
+        item.dataset.page = String(i);
+
+        var thumbCanvas = document.createElement('canvas');
+        thumbCanvas.className = 'page-thumb__canvas';
+        item.appendChild(thumbCanvas);
+
+        var label = document.createElement('span');
+        label.className = 'page-thumb__label';
+        label.textContent = '第 ' + i + ' 頁';
+        item.appendChild(label);
+
+        var badge = document.createElement('span');
+        badge.className = 'page-thumb__badge';
+        badge.style.display = 'none';
+        item.appendChild(badge);
+
+        item.addEventListener('click', onThumbClick);
+        els.pageThumbs.appendChild(item);
+
+        // 非同步畫縮圖（不阻塞 UI 太久）
+        // eslint-disable-next-line no-loop-func
+        (function (pageNum, cv) {
+          state.pdfDoc.getPage(pageNum).then(function (p) {
+            var vp = p.getViewport({ scale: 1 });
+            var scale = 72 / vp.width;
+            var vpScaled = p.getViewport({ scale: scale });
+            cv.width = Math.floor(vpScaled.width);
+            cv.height = Math.floor(vpScaled.height);
+            p.render({ canvasContext: cv.getContext('2d'), viewport: vpScaled });
+          });
+        })(i, thumbCanvas);
+      }
+      refreshThumbBadges();
+    }
+
+    function refreshThumbBadges() {
+      var items = els.pageThumbs.querySelectorAll('.page-thumb');
+      items.forEach(function (item) {
+        var p = parseInt(item.dataset.page, 10);
+        var arr = state.stamps[p] || [];
+        var badge = item.querySelector('.page-thumb__badge');
+        if (arr.length > 0) {
+          badge.textContent = String(arr.length);
+          badge.style.display = 'inline-flex';
+        } else {
+          badge.style.display = 'none';
+        }
+      });
+    }
+
+    function refreshThumbActive() {
+      var items = els.pageThumbs.querySelectorAll('.page-thumb');
+      items.forEach(function (item) {
+        var p = parseInt(item.dataset.page, 10);
+        item.classList.toggle('is-active', p === state.currentPage);
+      });
+    }
+
+    async function onThumbClick(e) {
+      var p = parseInt(e.currentTarget.dataset.page, 10);
+      if (!p || p === state.currentPage) return;
+      state.currentPage = p;
+      state.selectedId = null;
+      refreshThumbActive();
+      await renderCurrentPage();
+    }
+
+    // ---- 章圖載入 ----
+    async function loadStamp(file) {
+      hideMessages();
+      if (!file) return;
+      var mime = file.type;
+      if (mime !== 'image/png' && mime !== 'image/jpeg') {
+        showError('章圖請使用 PNG（建議去背）或 JPG 格式。');
+        return;
+      }
+      try {
+        var ab = await readFileAsArrayBuffer(file);
+        state.stampBytes = new Uint8Array(ab);
+        state.stampMime = mime;
+        state.stampFile = file.name;
+
+        var img = new Image();
+        var url = URL.createObjectURL(file);
+        await new Promise(function (resolve, reject) {
+          img.onload = resolve;
+          img.onerror = function () { reject(new Error('章圖讀取失敗')); };
+          img.src = url;
+        });
+        state.stampImage = img;
+
+        els.stampPreviewImg.src = url;
+        els.stampFileName.textContent = file.name;
+        els.stampSizeText.textContent = img.naturalWidth + ' × ' + img.naturalHeight + ' · ' + formatBytes(file.size);
+        els.stampPreviewWrap.classList.add('is-shown');
+        updateAttrSectionState();
+        renderStampLayer();
+        updateExportBtn();
+      } catch (err) {
+        showError('章圖載入失敗：' + (err && err.message || err));
+      }
+    }
+
+    function clearStamp() {
+      state.stampImage = null; state.stampBytes = null; state.stampMime = ''; state.stampFile = '';
+      els.stampPreviewWrap.classList.remove('is-shown');
+      els.stampPreviewImg.removeAttribute('src');
+      els.stampInput.value = '';
+      // 已放置的章維持原樣，但會失去新增 / 預覽 — 提示使用者
+      updateAttrSectionState();
+      updateExportBtn();
+    }
+
+    function updateAttrSectionState() {
+      var ok = !!state.stampImage;
+      els.attrSection.classList.toggle('is-disabled', !ok && countAllStamps() === 0);
+    }
+
+    // ---- 滑桿同步 ----
+    function syncSliders() {
+      var stamp = getSelectedStamp();
+      var src = stamp ? stamp : state.draft;
+      els.sizeSlider.value = String(Math.round(src.size));
+      els.sizeVal.textContent = String(Math.round(src.size));
+      els.rotationSlider.value = String(Math.round(src.rotation));
+      els.rotationVal.textContent = Math.round(src.rotation) + '°';
+      els.opacitySlider.value = String(Math.round(src.opacity * 100));
+      els.opacityVal.textContent = Math.round(src.opacity * 100) + '%';
+      els.attrHint.textContent = stamp
+        ? '正在編輯選取的章。點空白處取消選取後，滑桿變成下一個新放章的預設值。'
+        : '點 PDF 任意位置以放置章。先選一個章再調滑桿可以修改該章。';
+    }
+
+    function getSelectedStamp() {
+      if (!state.selectedId) return null;
+      var arr = state.stamps[state.currentPage] || [];
+      for (var i = 0; i < arr.length; i++) if (arr[i].id === state.selectedId) return arr[i];
+      return null;
+    }
+
+    function onSliderChange(prop, val) {
+      var stamp = getSelectedStamp();
+      if (stamp) stamp[prop] = val;
+      state.draft[prop] = val;
+      if (prop === 'size') els.sizeVal.textContent = String(Math.round(val));
+      if (prop === 'rotation') els.rotationVal.textContent = Math.round(val) + '°';
+      if (prop === 'opacity') els.opacityVal.textContent = Math.round(val * 100) + '%';
+      if (stamp) updateStampEl(stamp);
+    }
+
+    // ---- Stamp overlay ----
+    function newStampId() { return 's' + (state.nextId++); }
+
+    function getStampPixelSize(sizeOnCanvas) {
+      // 維持章圖原始長寬比，size = 較長邊
+      var img = state.stampImage;
+      if (!img) return { w: sizeOnCanvas, h: sizeOnCanvas };
+      var iw = img.naturalWidth, ih = img.naturalHeight;
+      var ar = iw / ih;
+      if (ar >= 1) return { w: sizeOnCanvas, h: sizeOnCanvas / ar };
+      return { w: sizeOnCanvas * ar, h: sizeOnCanvas };
+    }
+
+    function makeStampEl(stamp) {
+      var el = document.createElement('div');
+      el.className = 'stamp-item';
+      el.dataset.id = stamp.id;
+
+      var img = document.createElement('img');
+      img.src = state.stampImage.src;
+      img.alt = '';
+      el.appendChild(img);
+
+      var del = document.createElement('button');
+      del.type = 'button';
+      del.className = 'stamp-item__delete';
+      del.setAttribute('aria-label', '刪除這個章');
+      del.title = '刪除這個章';
+      del.appendChild(makeSvg('0 0 24 24', ['M18 6L6 18M6 6l12 12'], 14));
+      del.addEventListener('click', function (e) {
+        e.stopPropagation();
+        deleteStamp(stamp.id);
+      });
+      el.appendChild(del);
+
+      el.addEventListener('pointerdown', onStampPointerDown);
+      return el;
+    }
+
+    function updateStampEl(stamp) {
+      var el = els.stampLayer.querySelector('[data-id="' + stamp.id + '"]');
+      if (!el) return;
+      var dims = getStampPixelSize(stamp.size);
+      el.style.left = stamp.cx + 'px';
+      el.style.top = stamp.cy + 'px';
+      el.style.width = dims.w + 'px';
+      el.style.height = dims.h + 'px';
+      el.style.transform = 'translate(-50%, -50%) rotate(' + stamp.rotation + 'deg)';
+      el.style.opacity = String(stamp.opacity);
+    }
+
+    function renderStampLayer() {
+      while (els.stampLayer.firstChild) els.stampLayer.removeChild(els.stampLayer.firstChild);
+      if (!state.stampImage) {
+        els.stampCaption.textContent = state.pdfDoc ?
+          '第 ' + state.currentPage + ' / ' + state.totalPages + ' 頁 · ' +
+          ((state.stamps[state.currentPage] || []).length) + ' 個章' : '';
+        return;
+      }
+      var arr = state.stamps[state.currentPage] || [];
+      arr.forEach(function (stamp) {
+        var el = makeStampEl(stamp);
+        els.stampLayer.appendChild(el);
+        updateStampEl(stamp);
+        if (state.selectedId === stamp.id) el.classList.add('is-selected');
+      });
+      els.stampCaption.textContent = '第 ' + state.currentPage + ' / ' + state.totalPages + ' 頁 · ' + arr.length + ' 個章';
+      syncSliders();
+    }
+
+    function placeStamp(cx, cy) {
+      if (!state.stampImage) return;
+      if (!state.stamps[state.currentPage]) state.stamps[state.currentPage] = [];
+      var stamp = {
+        id: newStampId(),
+        cx: cx, cy: cy,
+        size: state.draft.size,
+        rotation: state.draft.rotation,
+        opacity: state.draft.opacity
+      };
+      state.stamps[state.currentPage].push(stamp);
+      state.selectedId = stamp.id;
+      var el = makeStampEl(stamp);
+      els.stampLayer.appendChild(el);
+      updateStampEl(stamp);
+      el.classList.add('is-selected');
+      refreshThumbBadges();
+      updateAttrSectionState();
+      updateExportBtn();
+      syncSliders();
+      els.stampCaption.textContent = '第 ' + state.currentPage + ' / ' + state.totalPages + ' 頁 · ' +
+        state.stamps[state.currentPage].length + ' 個章';
+    }
+
+    function deleteStamp(id) {
+      var arr = state.stamps[state.currentPage] || [];
+      var idx = -1;
+      for (var i = 0; i < arr.length; i++) if (arr[i].id === id) { idx = i; break; }
+      if (idx < 0) return;
+      arr.splice(idx, 1);
+      if (state.selectedId === id) state.selectedId = null;
+      renderStampLayer();
+      refreshThumbBadges();
+      updateExportBtn();
+    }
+
+    function selectStamp(id) {
+      state.selectedId = id;
+      var items = els.stampLayer.querySelectorAll('.stamp-item');
+      items.forEach(function (it) {
+        it.classList.toggle('is-selected', it.dataset.id === id);
+      });
+      syncSliders();
+    }
+
+    function deselectStamp() {
+      state.selectedId = null;
+      els.stampLayer.querySelectorAll('.stamp-item').forEach(function (it) {
+        it.classList.remove('is-selected');
+      });
+      syncSliders();
+    }
+
+    // ---- 拖曳 ----
+    var drag = null;
+    function onStampPointerDown(e) {
+      if (e.button !== 0 && e.pointerType === 'mouse') return;
+      e.stopPropagation();
+      var el = e.currentTarget;
+      var id = el.dataset.id;
+      selectStamp(id);
+      var stamp = getSelectedStamp();
+      if (!stamp) return;
+
+      drag = {
+        id: id,
+        startX: e.clientX, startY: e.clientY,
+        startCx: stamp.cx, startCy: stamp.cy,
+        moved: false
+      };
+      el.classList.add('is-dragging');
+      if (el.setPointerCapture) el.setPointerCapture(e.pointerId);
+      el.addEventListener('pointermove', onStampPointerMove);
+      el.addEventListener('pointerup', onStampPointerUp);
+      el.addEventListener('pointercancel', onStampPointerUp);
+    }
+    function onStampPointerMove(e) {
+      if (!drag) return;
+      var stamp = getSelectedStamp();
+      if (!stamp) return;
+      var dx = e.clientX - drag.startX;
+      var dy = e.clientY - drag.startY;
+      if (Math.abs(dx) + Math.abs(dy) > 2) drag.moved = true;
+      var dims = state.pageDims[state.currentPage];
+      stamp.cx = Math.max(0, Math.min(dims.canvasW, drag.startCx + dx));
+      stamp.cy = Math.max(0, Math.min(dims.canvasH, drag.startCy + dy));
+      updateStampEl(stamp);
+    }
+    function onStampPointerUp(e) {
+      if (!drag) return;
+      var el = e.currentTarget;
+      el.classList.remove('is-dragging');
+      if (el.releasePointerCapture) el.releasePointerCapture(e.pointerId);
+      el.removeEventListener('pointermove', onStampPointerMove);
+      el.removeEventListener('pointerup', onStampPointerUp);
+      el.removeEventListener('pointercancel', onStampPointerUp);
+      drag = null;
+    }
+
+    // 點 layer 空白處：以該點為中心放新章（對齊 PRD F-04）
+    function onLayerClick(e) {
+      if (e.target.closest('.stamp-item')) return;
+      if (!state.stampImage) {
+        showError('請先上傳發票章圖。');
+        return;
+      }
+      var rect = els.stampLayer.getBoundingClientRect();
+      placeStamp(e.clientX - rect.left, e.clientY - rect.top);
+    }
+
+    // ---- 匯出 ----
+    async function exportPdf() {
+      hideMessages();
+      if (!state.pdfDoc || !state.pdfBytes) { showError('請先上傳 PDF。'); return; }
+      if (!state.stampImage || !state.stampBytes) { showError('請先上傳發票章圖。'); return; }
+      if (countAllStamps() === 0) { showError('請至少在一頁放上一個章。'); return; }
+      if (!window.PDFLib) { showError('pdf-lib 載入失敗，請重新整理頁面。'); return; }
+
+      try {
+        state.busy = true;
+        updateExportBtn();
+        setProgress('組裝 PDF…', 10);
+        var PDFLib = window.PDFLib;
+        var pdfDoc;
+        try {
+          pdfDoc = await PDFLib.PDFDocument.load(state.pdfBytes, { ignoreEncryption: false });
+        } catch (err) {
+          var msg = String(err && err.message || err);
+          if (/encrypt|password/i.test(msg)) {
+            showError('無法在加密 PDF 上加蓋章。請先解除密碼後再試。');
+          } else {
+            throw err;
+          }
+          return;
+        }
+        setProgress('嵌入章圖…', 30);
+        var image = state.stampMime === 'image/png'
+          ? await pdfDoc.embedPng(state.stampBytes)
+          : await pdfDoc.embedJpg(state.stampBytes);
+
+        // 章圖原始長寬比
+        var imgAR = state.stampImage.naturalWidth / state.stampImage.naturalHeight;
+
+        var pageNums = Object.keys(state.stamps).map(function (k) { return parseInt(k, 10); }).sort(function (a, b) { return a - b; });
+        var total = pageNums.length;
+        setProgress('繪製章…', 50);
+
+        for (var i = 0; i < pageNums.length; i++) {
+          var pageNum = pageNums[i];
+          var stamps = state.stamps[pageNum] || [];
+          if (stamps.length === 0) continue;
+          var page = pdfDoc.getPage(pageNum - 1);
+          var dims = state.pageDims[pageNum];
+          if (!dims) {
+            // 沒渲染過的頁也要算 pdfW/H（用實際頁面尺寸）
+            var ps = page.getSize();
+            dims = { pdfW: ps.width, pdfH: ps.height, canvasW: ps.width, canvasH: ps.height };
+            state.pageDims[pageNum] = dims;
+          }
+          var ratio = dims.pdfW / dims.canvasW;
+          for (var j = 0; j < stamps.length; j++) {
+            var s = stamps[j];
+            // 章在 canvas 上的長寬（保留長寬比，size = 較長邊）
+            var canvasSize = s.size;
+            var stampCW = imgAR >= 1 ? canvasSize : canvasSize * imgAR;
+            var stampCH = imgAR >= 1 ? canvasSize / imgAR : canvasSize;
+            var W = stampCW * ratio;
+            var H = stampCH * ratio;
+            // 章中心點在 PDF 座標（左下角原點）
+            var cxPdf = s.cx * ratio;
+            var cyPdf = dims.pdfH - s.cy * ratio;
+            // CSS 順時針正、pdf-lib 逆時針正 → 角度反向
+            var thetaPdf = -s.rotation * Math.PI / 180;
+            var cosT = Math.cos(thetaPdf), sinT = Math.sin(thetaPdf);
+            // 找 image 左下角 (x, y)，使旋轉後 image 中心落在 (cxPdf, cyPdf)
+            // 旋轉中心是 image 左下角，未旋轉時中心在 (x + W/2, y + H/2)
+            // 旋轉 θ 後中心位移為：(W/2*cosT - H/2*sinT, W/2*sinT + H/2*cosT)
+            var x = cxPdf - (W / 2 * cosT - H / 2 * sinT);
+            var y = cyPdf - (W / 2 * sinT + H / 2 * cosT);
+            page.drawImage(image, {
+              x: x, y: y, width: W, height: H,
+              rotate: PDFLib.degrees(-s.rotation),
+              opacity: s.opacity
+            });
+          }
+          setProgress('繪製章…（' + (i + 1) + ' / ' + total + ' 頁）', 50 + Math.round((i + 1) / total * 40));
+          await new Promise(function (r) { setTimeout(r, 0); });
+        }
+
+        setProgress('輸出檔案…', 95);
+        var outBytes = await pdfDoc.save();
+        var blob = new Blob([outBytes], { type: 'application/pdf' });
+        var url = URL.createObjectURL(blob);
+        var a = document.createElement('a');
+        a.href = url;
+        a.download = 'stamped_' + (state.pdfName || 'document') + '.pdf';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(function () { URL.revokeObjectURL(url); }, 4000);
+
+        setProgress('完成', 100);
+        showSuccess('已匯出含章 PDF，共 ' + countAllStamps() + ' 個章 / ' + pageNums.length + ' 頁。');
+        setTimeout(hideProgress, 600);
+      } catch (err) {
+        console.error(err);
+        hideProgress();
+        showError('匯出失敗：' + (err && err.message || err));
+      } finally {
+        state.busy = false;
+        updateExportBtn();
+      }
+    }
+
+    // ===== 綁定事件 =====
+
+    function setupDropzone(zone, input, handler) {
+      zone.addEventListener('click', function () { input.click(); });
+      input.addEventListener('change', function () {
+        if (input.files && input.files[0]) handler(input.files[0]);
+      });
+      zone.addEventListener('dragover', function (e) {
+        e.preventDefault(); zone.classList.add('is-dragover');
+      });
+      zone.addEventListener('dragleave', function () { zone.classList.remove('is-dragover'); });
+      zone.addEventListener('drop', function (e) {
+        e.preventDefault(); zone.classList.remove('is-dragover');
+        if (e.dataTransfer.files && e.dataTransfer.files[0]) handler(e.dataTransfer.files[0]);
+      });
+    }
+
+    setupDropzone(els.pdfDropzone, els.pdfInput, function (file) { loadPdf(file); });
+    setupDropzone(els.stampDropzone, els.stampInput, function (file) { loadStamp(file); });
+    els.stampClearBtn.addEventListener('click', clearStamp);
+
+    els.sizeSlider.addEventListener('input', function () {
+      onSliderChange('size', parseFloat(els.sizeSlider.value));
+    });
+    els.rotationSlider.addEventListener('input', function () {
+      onSliderChange('rotation', parseFloat(els.rotationSlider.value));
+    });
+    els.opacitySlider.addEventListener('input', function () {
+      onSliderChange('opacity', parseFloat(els.opacitySlider.value) / 100);
+    });
+
+    els.stampLayer.addEventListener('click', onLayerClick);
+    els.exportBtn.addEventListener('click', exportPdf);
+
+    // Esc 取消選取（不阻擋表單輸入；只在 PDF 已載入時才管）
+    document.addEventListener('keydown', function (e) {
+      if (e.key !== 'Escape') return;
+      if (state.selectedId) {
+        e.preventDefault();
+        deselectStamp();
+      }
+    });
+
+    syncSliders();
+    updateExportBtn();
+    updateAttrSectionState();
+  })();
+  </script>
+
+</body>
+</html>
