@@ -72,6 +72,12 @@ async def page_invoice_stamp():
     return _page("invoice-stamp", "index.html")
 
 
+# AI（Illustrator）/ PDF 轉 SVG 工具頁面（前端 + ai2svg 後端 API）
+@app.get("/ai2svg", include_in_schema=False)
+async def page_ai2svg():
+    return _page("ai2svg", "index.html")
+
+
 @app.get("/api/health")
 async def health_check():
     """健康檢查端點。"""

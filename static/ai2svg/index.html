@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AI 轉 SVG · HD 的工具箱</title>
+  <meta name="description" content="把 Adobe Illustrator (.ai) 或 PDF 逐頁（artboard）拆成獨立向量 SVG，預覽、勾選、命名後下載。">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="/static/shared/app.css">
+  <script src="/static/shared/theme.js"></script>
+  <script src="/static/shared/settings.js"></script>
+  <style>
+    .svg-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: var(--space-4); margin-top: var(--space-4); }
+    .svg-item { border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface); overflow: hidden; display: flex; flex-direction: column; }
+    .svg-item.is-selected { border-color: var(--accent-border); }
+    .svg-item__preview { aspect-ratio: 1 / 1; background: var(--surface-2); display: flex; align-items: center; justify-content: center; padding: var(--space-4); }
+    .svg-item__preview img { max-width: 100%; max-height: 100%; }
+    .svg-item__body { padding: var(--space-3); display: flex; flex-direction: column; gap: var(--space-2); border-top: 1px solid var(--border); }
+    .svg-item__row { display: flex; align-items: center; gap: var(--space-2); }
+    .svg-item__row label { display: flex; align-items: center; gap: var(--space-2); font-size: 14px; color: var(--text-muted); cursor: pointer; }
+    .svg-item__name { flex: 1; }
+    .svg-item__ext { font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: var(--text-dim); }
+    .toolbar { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; margin-top: var(--space-4); }
+    .toolbar__spacer { flex: 1; }
+    .toolbar__count { font-size: 14px; color: var(--text-muted); }
+  </style>
+</head>
+<body>
+
+  <header class="app-header">
+    <div class="app-header__row">
+      <a href="/" class="brand">HD 的工具箱</a>
+      <span class="crumb-sep">/</span>
+      <span class="crumb-cur">AI 轉 SVG</span>
+      <span class="app-header__spacer"></span>
+      <a href="/" class="btn btn--ghost" style="padding:6px 10px;font-size:13px">
+        <svg class="icon icon--sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+        回工具箱
+      </a>
+      <button type="button" class="theme-toggle" id="themeToggle" aria-label="切換亮 / 暗模式" title="切換亮 / 暗模式">
+        <svg class="icon icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
+        <svg class="icon icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <main class="app-main app-main--wide">
+    <div class="tool-head">
+      <h1>AI 轉 SVG</h1>
+      <p>把 Adobe Illustrator（.ai）或 PDF 逐頁（artboard）拆成獨立向量 SVG。上傳到伺服器轉換後立即丟棄，不會留存。</p>
+    </div>
+
+    <div class="card">
+      <div class="section">
+        <div class="section__label"><span class="section__num">01</span> 上傳 .ai 或 .pdf</div>
+        <div class="dropzone" id="dropzone">
+          <input type="file" id="fileInput" accept=".ai,.pdf" hidden>
+          <svg class="dropzone__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M17 8l-5-5-5 5M12 3v12"/></svg>
+          <div class="dropzone__title">拖曳 .ai 或 .pdf 到這裡</div>
+          <div class="dropzone__hint">或點擊選擇檔案</div>
+          <span class="dropzone__file" id="fileName"></span>
+        </div>
+      </div>
+
+      <button type="button" class="btn btn--primary btn--block mt-6" id="convertBtn" disabled>選擇檔案後開始轉換</button>
+
+      <div class="progress" id="progress">
+        <div class="progress__header">
+          <span class="progress__label">轉換中</span>
+          <span class="progress__status" id="progressStatus"></span>
+        </div>
+        <div class="progress__track"><div class="progress__bar" id="progressBar"></div></div>
+      </div>
+
+      <div class="message message--error mt-4" id="errorMsg">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M15 9l-6 6M9 9l6 6"/></svg>
+        <span id="errorText"></span>
+      </div>
+    </div>
+
+    <div class="card mt-4" id="resultCard" hidden>
+      <div class="section__label"><span class="section__num">02</span> 選取要匯出的圖形</div>
+      <div class="toolbar">
+        <button type="button" class="btn btn--ghost" id="selectAllBtn">全選</button>
+        <button type="button" class="btn btn--ghost" id="selectNoneBtn">全不選</button>
+        <span class="toolbar__spacer"></span>
+        <span class="toolbar__count" id="selCount"></span>
+        <button type="button" class="btn btn--primary" id="downloadZipBtn">下載選取（ZIP）</button>
+      </div>
+      <div class="svg-grid" id="svgGrid"></div>
+    </div>
+  </main>
+
+  <footer class="app-footer">
+    <p>HD 的工具箱 · made by <a href="https://github.com/" rel="noopener">Jackie Yeh</a></p>
+  </footer>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js" integrity="sha512-XMVd28F1oH/O71fzwBnV7HucLxVwtxf26XV8P4wPk26EDxuGZ91N8bsOttmnomcCD3CS5ZMRL50H0GgOHvegtg==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+  <script>
+    (function () {
+      var dropzone = document.getElementById('dropzone');
+      var fileInput = document.getElementById('fileInput');
+      var fileName = document.getElementById('fileName');
+      var convertBtn = document.getElementById('convertBtn');
+      var progress = document.getElementById('progress');
+      var progressBar = document.getElementById('progressBar');
+      var progressStatus = document.getElementById('progressStatus');
+      var errorMsg = document.getElementById('errorMsg');
+      var errorText = document.getElementById('errorText');
+      var resultCard = document.getElementById('resultCard');
+      var svgGrid = document.getElementById('svgGrid');
+      var selectAllBtn = document.getElementById('selectAllBtn');
+      var selectNoneBtn = document.getElementById('selectNoneBtn');
+      var downloadZipBtn = document.getElementById('downloadZipBtn');
+      var selCount = document.getElementById('selCount');
+
+      var selectedFile = null;
+      var pages = [];       // { index, svg, blobUrl, name }
+      var baseName = 'export';
+
+      function showError(msg) { errorText.textContent = msg; errorMsg.classList.add('is-shown'); }
+      function hideError() { errorMsg.classList.remove('is-shown'); }
+
+      function sanitizeName(s) {
+        return (s || '').replace(/[\/\\:*?"<>|]/g, '').trim();
+      }
+      function pad2(n) { return (n < 10 ? '0' : '') + n; }
+
+      function handleFile(file) {
+        var name = (file && file.name || '').toLowerCase();
+        if (!file || !(name.endsWith('.ai') || name.endsWith('.pdf'))) {
+          showError('請選擇 .ai 或 .pdf 檔案。');
+          return;
+        }
+        selectedFile = file;
+        fileName.textContent = file.name;
+        fileName.classList.add('is-shown');
+        convertBtn.disabled = false;
+        convertBtn.textContent = '開始轉換';
+        hideError();
+      }
+
+      dropzone.addEventListener('click', function () { fileInput.click(); });
+      dropzone.addEventListener('dragover', function (e) { e.preventDefault(); dropzone.classList.add('is-dragover'); });
+      dropzone.addEventListener('dragleave', function (e) { e.preventDefault(); dropzone.classList.remove('is-dragover'); });
+      dropzone.addEventListener('drop', function (e) {
+        e.preventDefault();
+        dropzone.classList.remove('is-dragover');
+        if (e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]);
+      });
+      fileInput.addEventListener('change', function (e) {
+        if (e.target.files.length) handleFile(e.target.files[0]);
+      });
+
+      function updateSelCount() {
+        var checks = svgGrid.querySelectorAll('input[type=checkbox]');
+        var n = 0;
+        checks.forEach(function (c) { if (c.checked) n++; });
+        selCount.textContent = n + ' / ' + checks.length + ' 已選';
+        downloadZipBtn.disabled = n === 0;
+      }
+
+      function renderPages() {
+        svgGrid.innerHTML = '';
+        pages.forEach(function (pg, i) {
+          var item = document.createElement('div');
+          item.className = 'svg-item is-selected';
+
+          var preview = document.createElement('div');
+          preview.className = 'svg-item__preview';
+          var img = document.createElement('img');
+          img.src = pg.blobUrl;   // SVG 以圖片載入，不執行內部 script
+          img.alt = pg.name;
+          preview.appendChild(img);
+
+          var body = document.createElement('div');
+          body.className = 'svg-item__body';
+
+          var row1 = document.createElement('div');
+          row1.className = 'svg-item__row';
+          var label = document.createElement('label');
+          var cb = document.createElement('input');
+          cb.type = 'checkbox';
+          cb.checked = true;
+          cb.addEventListener('change', function () {
+            item.classList.toggle('is-selected', cb.checked);
+            updateSelCount();
+          });
+          var labelText = document.createElement('span');
+          labelText.textContent = '第 ' + pg.index + ' 頁';
+          label.appendChild(cb);
+          label.appendChild(labelText);
+          var dlOne = document.createElement('button');
+          dlOne.type = 'button';
+          dlOne.className = 'btn btn--ghost';
+          dlOne.textContent = '下載此頁';
+          dlOne.addEventListener('click', function () { downloadOne(pg); });
+          row1.appendChild(label);
+          var spacer = document.createElement('span');
+          spacer.style.flex = '1';
+          row1.appendChild(spacer);
+          row1.appendChild(dlOne);
+
+          var row2 = document.createElement('div');
+          row2.className = 'svg-item__row';
+          var nameInput = document.createElement('input');
+          nameInput.type = 'text';
+          nameInput.className = 'text-field svg-item__name';
+          nameInput.value = pg.name;
+          nameInput.addEventListener('input', function () { pg.name = nameInput.value; });
+          var ext = document.createElement('span');
+          ext.className = 'svg-item__ext';
+          ext.textContent = '.svg';
+          row2.appendChild(nameInput);
+          row2.appendChild(ext);
+
+          body.appendChild(row1);
+          body.appendChild(row2);
+          item.appendChild(preview);
+          item.appendChild(body);
+          svgGrid.appendChild(item);
+
+          pg._checkbox = cb;
+        });
+        updateSelCount();
+      }
+
+      function fileNameFor(pg) {
+        var n = sanitizeName(pg.name) || (baseName + '-' + pad2(pg.index));
+        return n + '.svg';
+      }
+
+      function downloadOne(pg) {
+        var blob = new Blob([pg.svg], { type: 'image/svg+xml' });
+        var url = URL.createObjectURL(blob);
+        var a = document.createElement('a');
+        a.href = url;
+        a.download = fileNameFor(pg);
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      }
+
+      selectAllBtn.addEventListener('click', function () {
+        svgGrid.querySelectorAll('input[type=checkbox]').forEach(function (c) {
+          c.checked = true; c.dispatchEvent(new Event('change'));
+        });
+      });
+      selectNoneBtn.addEventListener('click', function () {
+        svgGrid.querySelectorAll('input[type=checkbox]').forEach(function (c) {
+          c.checked = false; c.dispatchEvent(new Event('change'));
+        });
+      });
+
+      downloadZipBtn.addEventListener('click', async function () {
+        var chosen = pages.filter(function (pg) { return pg._checkbox.checked; });
+        if (!chosen.length) return;
+        var zip = new JSZip();
+        var used = {};
+        chosen.forEach(function (pg) {
+          var fn = fileNameFor(pg);
+          if (used[fn]) { fn = fn.replace(/\.svg$/, '') + '-' + pg.index + '.svg'; }
+          used[fn] = true;
+          zip.file(fn, pg.svg);
+        });
+        var blob = await zip.generateAsync({ type: 'blob' });
+        var url = URL.createObjectURL(blob);
+        var a = document.createElement('a');
+        a.href = url;
+        a.download = baseName + '-svg.zip';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      });
+
+      convertBtn.addEventListener('click', async function () {
+        if (!selectedFile) return;
+        hideError();
+        resultCard.hidden = true;
+        progress.classList.add('is-shown');
+        progressBar.style.width = '20%';
+        progressStatus.textContent = '上傳中…';
+        convertBtn.disabled = true;
+
+        var form = new FormData();
+        form.append('file', selectedFile);
+
+        try {
+          var res = await fetch('/api/ai2svg/convert', { method: 'POST', body: form });
+          progressBar.style.width = '70%';
+          progressStatus.textContent = '處理中…';
+          if (!res.ok) {
+            var err; try { err = await res.json(); } catch (e) { err = {}; }
+            throw new Error(err.detail || ('轉換失敗（HTTP ' + res.status + '）'));
+          }
+          var data = await res.json();
+          baseName = sanitizeName(data.filename) || 'export';
+          pages = data.pages.map(function (p) {
+            var blob = new Blob([p.svg], { type: 'image/svg+xml' });
+            return {
+              index: p.index,
+              svg: p.svg,
+              blobUrl: URL.createObjectURL(blob),
+              name: baseName + '-' + pad2(p.index)
+            };
+          });
+          renderPages();
+          progressBar.style.width = '100%';
+          progressStatus.textContent = '完成';
+          setTimeout(function () {
+            progress.classList.remove('is-shown');
+            resultCard.hidden = false;
+          }, 350);
+        } catch (e) {
+          showError(e.message || '轉換失敗。');
+          progress.classList.remove('is-shown');
+        } finally {
+          convertBtn.disabled = false;
+        }
+      });
+    })();
+  </script>
+</body>
+</html>
