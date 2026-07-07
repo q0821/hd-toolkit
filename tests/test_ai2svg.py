@@ -33,10 +33,7 @@ def test_each_page_is_pure_vector_svg():
 
 
 def test_rejects_non_ai_pdf_extension():
-    res = client.post(
-        "/api/ai2svg/convert",
-        files={"file": ("note.txt", b"%PDF-1.4 hello", "text/plain")},
-    )
+    res = _post(b"%PDF-1.4 hello", "note.txt")
     assert res.status_code == 400
     assert "只接受" in res.json()["detail"]
 
@@ -51,7 +48,7 @@ def test_rejects_non_pdf_magic_bytes():
     # 副檔名是 .ai 但內容不是 PDF 相容（舊版 .ai）
     res = _post(b"\x00\x01 not a pdf", "old.ai")
     assert res.status_code == 400
-    assert "PDF 相容" in res.json()["detail"]
+    assert "此檔非 PDF 相容格式" in res.json()["detail"]
 
 
 def test_rejects_too_many_pages():
