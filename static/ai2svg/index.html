@@ -20,7 +20,7 @@
     .svg-item__row { display: flex; align-items: center; gap: var(--space-2); }
     .svg-item__row label { display: flex; align-items: center; gap: var(--space-2); font-size: 14px; color: var(--text-muted); cursor: pointer; }
     .svg-item__name { flex: 1; }
-    .svg-item__ext { font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: var(--text-dim); }
+    .svg-item__ext { font-family: var(--font-mono); font-size: 12px; color: var(--text-dim); }
     .toolbar { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; margin-top: var(--space-4); }
     .toolbar__spacer { flex: 1; }
     .toolbar__count { font-size: 14px; color: var(--text-muted); }
@@ -298,6 +298,7 @@
           }
           var data = await res.json();
           baseName = sanitizeName(data.filename) || 'export';
+          pages.forEach(function (old) { if (old.blobUrl) URL.revokeObjectURL(old.blobUrl); });
           pages = data.pages.map(function (p) {
             var blob = new Blob([p.svg], { type: 'image/svg+xml' });
             return {
