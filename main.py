@@ -10,7 +10,7 @@ from fastapi import FastAPI
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from app.tools import pdf2jpg, sticker_ai
+from app.tools import ai2svg, pdf2jpg, sticker_ai
 
 BASE_DIR = Path(__file__).parent
 STATIC_DIR = BASE_DIR / "static"
@@ -24,6 +24,7 @@ app = FastAPI(
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 app.include_router(pdf2jpg.router)
 app.include_router(sticker_ai.router)
+app.include_router(ai2svg.router)
 
 
 def _page(*parts: str) -> FileResponse:
