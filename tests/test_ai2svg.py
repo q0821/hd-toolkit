@@ -55,3 +55,15 @@ def test_rejects_too_many_pages():
     res = _post(make_pdf(201), "big.pdf")
     assert res.status_code == 400
     assert "頁數超過上限" in res.json()["detail"]
+
+
+def test_page_route_served():
+    res = client.get("/ai2svg")
+    assert res.status_code == 200
+    assert "AI 轉 SVG" in res.text
+
+
+def test_home_lists_ai2svg_tool():
+    res = client.get("/")
+    assert res.status_code == 200
+    assert 'href="/ai2svg"' in res.text
