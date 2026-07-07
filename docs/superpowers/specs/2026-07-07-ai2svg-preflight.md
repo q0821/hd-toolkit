@@ -64,6 +64,7 @@
 - [ ] 只在「多檔打包下載」時用；單頁下載不需 JSZip（直接 Blob）。
 - [ ] License：JSZip 為 MIT / GPLv3 雙授權，前端 CDN 引用無問題。
 - [ ] pin 明確版本號（不是 latest），與專案 pdf.js 3.11.174 的 pin 風格一致。
+- [ ] 加 `integrity="sha512-…"` SRI（防 CDN 竄改）；hash 從 cdnjs API 取得（`curl -s "https://api.cdnjs.com/libraries/jszip/3.10.1?fields=sri"`），JSZip 3.10.1 min 為 `sha512-XMVd28F1oH/O71fzwBnV7HucLxVwtxf26XV8P4wPk26EDxuGZ91N8bsOttmnomcCD3CS5ZMRL50H0GgOHvegtg==`。
 
 ## 完工自查（實作後同一份再走一遍）
 
