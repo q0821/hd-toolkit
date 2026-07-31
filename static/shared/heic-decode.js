@@ -39,10 +39,17 @@
   var AVIF_BRAND = { avif: true, avis: true };
 
   var _libheif = null;   // Promise，載入成功後長期快取
+  var _attempt = 0;      // 失敗重試次數，用來換掉 module specifier，見下
 
   function loadLibheif() {
     if (!_libheif) {
-      _libheif = import(/* @vite-ignore */ CDN).then(function (mod) {
+      // 只清自己的 promise 快取不足以重試：瀏覽器的 module map 會記住失敗的
+      // import，同一個 URL 之後不會再發請求（實測驗證過）。加一個 jsDelivr
+      // 會忽略的 query 參數換掉 specifier，才能在斷線恢復後真的重試，
+      // 不必叫使用者重新整理、把已選好的檔案清單弄丟。
+      var url = _attempt === 0 ? CDN : CDN + '?_r=' + _attempt;
+      _attempt++;
+      _libheif = import(/* @vite-ignore */ url).then(function (mod) {
         var factory = (mod && mod.default) || mod;
         // libheif-bundle.mjs 的 default export 是 Emscripten factory；
         // 依版本可能同步回傳模組物件或回傳 Promise，兩種都吃

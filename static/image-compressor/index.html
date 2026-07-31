@@ -284,6 +284,15 @@
     }
 
     // ---- 清單渲染（全程用 DOM 節點建構，不用 innerHTML）----
+    // 標籤要跟著輸出格式走：改成 WEBP 後還寫著「→ JPG」等於標了個錯的落點
+    function convLabel(item) { return 'HEIC → ' + FMT[targetCodecFor(item)].ext.toUpperCase(); }
+    function refreshConvChips() {
+      state.items.forEach(it => {
+        if (it.srcCodec !== 'heic' || !it.nameEl) return;
+        const chip = it.nameEl.querySelector('.conv');
+        if (chip) chip.textContent = convLabel(it);
+      });
+    }
     const SVG_NS = 'http://www.w3.org/2000/svg';
     function svgEl(tag, attrs) {
       const n = document.createElementNS(SVG_NS, tag);
@@ -315,7 +324,7 @@
       const info = el('div', 'cmp-info');
       const nm = el('div', 'cmp-name', item.name); nm.title = item.name;
       // 轉換落點要看得見，不做隱形轉檔
-      if (item.srcCodec === 'heic') nm.append(el('span', 'conv', 'HEIC → JPG'));
+      if (item.srcCodec === 'heic') nm.append(el('span', 'conv', convLabel(item)));
       const sz = el('div', 'cmp-sizes');
       const dl = el('button', 'btn btn--secondary', '下載'); dl.disabled = true;
       dl.addEventListener('click', () => { if (item.blob) triggerDownload(item.blob, item.outName); });
@@ -557,6 +566,7 @@
       if (state.busy) return;
       state.format = btn.getAttribute('data-format');
       els.formatSeg.querySelectorAll('.segmented__btn').forEach(b => b.setAttribute('aria-pressed', b === btn ? 'true' : 'false'));
+      refreshConvChips();
     }));
     els.resizeSeg.querySelectorAll('.segmented__btn').forEach(btn => btn.addEventListener('click', () => {
       if (state.busy) return;

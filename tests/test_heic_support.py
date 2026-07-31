@@ -63,6 +63,23 @@ def test_avif_path_is_not_taken_over_by_heic():
     assert "image/avif" in client.get("/image-compressor").text
 
 
+def test_conversion_label_follows_output_format():
+    """列上的「HEIC → X」標籤必須跟著輸出格式走。寫死成 JPG 的話，使用者切到
+    WEBP 後標籤會標出一個錯的落點——那正好違背了加這個標籤的目的。"""
+    body = client.get("/image-compressor").text
+    assert "convLabel" in body, "標籤文字應由 targetCodecFor 推導"
+    assert "refreshConvChips" in body, "切換輸出格式時要更新既有列的標籤"
+    assert "'HEIC → JPG'" not in body, "標籤不可寫死"
+
+
+def test_decoder_retry_bypasses_module_map():
+    """瀏覽器的 module map 會快取失敗的 import，只清自己的 promise 快取不夠，
+    同一個 URL 不會再發請求。重試必須換掉 module specifier。"""
+    body = client.get("/static/shared/heic-decode.js").text
+    assert "_attempt" in body
+    assert "?_r=" in body, "重試時要加 query 參數換掉 specifier"
+
+
 def test_untouched_tools_keep_their_accept_lists():
     """這次範圍只有兩個工具，其餘三個不該被順手改動。"""
     for path in ["/bg-remover", "/sticker-ai", "/invoice-stamp"]:

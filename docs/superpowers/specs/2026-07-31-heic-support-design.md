@@ -186,9 +186,19 @@ HEIC 的壓縮率遠高於 JPEG，一個 5 MB 的檔案可能是 48 MP，解碼�
 | slicer 去綠幕開 / 關切換 | 關閉後 previewCanvas 正確畫回原圖 |
 | slicer 快速換檔競態（兩個方向） | generation 計數有效，最終畫面都是最後選的那張 |
 | 手機寬度 390px、亮 / 暗模式 | 無橫向捲軸、無溢出，佔位圖示走 design token |
-| pytest | 13 passed（既有 8 + 新增 5） |
+| **`irot` 容器層旋轉**（iPhone 直式照片的機制） | 手工把 `irot` angle byte 由 0 改成 1（90°）產生樣本：實際像素 900×1600、libheif 輸出 **1600×900**，確認有套用 |
+| 輸出格式標籤 | 切 WEBP / PNG / AVIF / JPEG / 原格式，標籤都跟著變；壓成 WEBP 後標籤 `HEIC → WEBP`、下載檔名 `chip.webp` 一致 |
+| CDN 載入失敗與重試 | 用只改 CDN 常數的副本測：連續三次各自真的重發請求（1→2→3），錯誤訊息為繁中文案 |
+| slicer 解碼失敗 | 前一張的檔名、預覽、切割按鈕都保留，只顯示錯誤 |
+| pytest | 16 passed（既有 8 + 新增 8） |
 
-**未能驗證的一項**：帶 `irot` / EXIF orientation flag 的真實 iPhone 照片。`sips` 產出的直式檔是實際旋轉像素而非設 flag，本機也沒有 exiftool 可構造。libheif 上游預設會套用 HEIF 的 transformative properties，且 libheif-js 未暴露關閉選項，理論上正確，但**這條需要使用者拿自己的 iPhone 直式照片實測**。
+### 補測與修正（advisor review 後）
+
+第一輪實測全程都用預設的「原格式」，因此漏掉三件事，補測後修正：
+
+1. **輸出格式標籤會停在 `HEIC → JPG`**（真 bug）。`buildRow()` 只在建列時寫死一次，切到 WEBP 後標籤沒更新，實際輸出卻是 `.webp` —— 標籤反而標出錯的落點，正好違背「不做隱形轉檔」的初衷。改成由 `targetCodecFor()` 推導，並在格式切換時 `refreshConvChips()`。
+2. **`irot` 這條原本要標「未驗證」，但其實測得到**。`sips` 不會寫非零 `irot`（它是實際重編碼像素），改成手工修改 angle byte 構造樣本即可，結論是 libheif 有正確套用。
+3. **「失敗後清快取可重試」實際上無效**。瀏覽器的 module map 會快取失敗的 import，同一個 URL 之後不會再發請求（實測請求數停在 1），只清自己的 promise 快取沒有用。改成重試時附加 `?_r=N` 換掉 module specifier（已確認 jsDelivr 對此參數照常回 200 且可正常 import），使用者斷線恢復後不必重新整理、不會弄丟已選好的檔案清單。
 
 ## 決策紀錄
 

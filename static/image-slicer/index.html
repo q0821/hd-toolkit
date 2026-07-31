@@ -350,6 +350,9 @@
     }
 
     function loadHeic(file, seq) {
+      // 失敗時要把標籤還原成前一張的狀態，否則畫面上留著舊圖卻沒有檔名
+      var prevLabel = els.fileName.textContent;
+      var prevShown = els.fileName.classList.contains('is-shown');
       els.fileName.textContent = '正在載入 HEIC 解碼器…';
       els.fileName.classList.add('is-shown');
       return file.arrayBuffer().then(function (buf) {
@@ -359,7 +362,8 @@
         applyLoaded(file, canvas, canvas.width, canvas.height, null);
       }).catch(function (e) {
         if (seq !== loadSeq) return;
-        els.fileName.classList.remove('is-shown');
+        els.fileName.textContent = prevLabel;
+        els.fileName.classList.toggle('is-shown', prevShown);
         showError(e && e.message ? e.message : 'HEIC 解碼失敗。');
       });
     }

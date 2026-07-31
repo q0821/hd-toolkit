@@ -512,7 +512,12 @@ AI 自動去背已「堪用」（imgly fp16 + 碎屑清理）；再往上：① 
 
 **成功標準**：iPhone `.heic` 丟進壓縮工具能壓成 JPEG 並顯示壓縮率；丟進切片工具能預覽、切割、打包 ZIP；AVIF 不被誤判；超大檔與壞檔不會拖垮整批
 
-**狀態**：完成（Playwright 無頭實測：`isHeic` 9/9、解碼與原圖平均色差 < 5、批次 5 檔全過、56 MP 正確擋下且 heap 只漲 13 MB、切片 9 塊尺寸正確、快速換檔競態兩方向皆正確、手機 390px 與亮 / 暗模式無 regression、pytest 13 passed）— **待使用者以真實 iPhone 直式照片驗證 EXIF / irot 方向**
+**狀態**：完成（Playwright 無頭實測：`isHeic` 9/9、解碼與原圖平均色差 < 5、批次 5 檔全過、56 MP 正確擋下且 heap 只漲 13 MB、切片 9 塊尺寸正確、快速換檔競態兩方向皆正確、手機 390px 與亮 / 暗模式無 regression、pytest 16 passed）
+
+**advisor review 後補測 3 項**（第一輪全程用預設「原格式」，漏掉這些）：
+1. 輸出格式標籤原本寫死 `HEIC → JPG`，切到 WEBP 後標籤沒更新、實際卻輸出 `.webp` —— 標出錯的落點，違背「不做隱形轉檔」初衷。改由 `targetCodecFor()` 推導 + 格式切換時刷新
+2. `irot` 方向原本要標「未驗證」，改用手工修改 angle byte（0 → 1，即 90°）構造樣本後測得：實際像素 900×1600、libheif 輸出 1600×900，**確認有套用容器層旋轉**（iPhone 直式照片就是這個機制）
+3. 「載入失敗清快取可重試」實際無效：瀏覽器 module map 會快取失敗的 import，同一 URL 不再發請求（實測請求數停在 1）。改成重試附加 `?_r=N` 換掉 specifier，實測連續三次都真的重發
 
 ## 追加決策紀錄
 | Date | Decision | Rationale |

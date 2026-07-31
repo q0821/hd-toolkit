@@ -33,7 +33,7 @@
 
 - [ ] CDN 失敗（離線 / 被擋 / 404）有明確 `.message--error`，不是靜默失敗或無限轉圈
 - [ ] 載入中有可見回饋（1.46 MB 在慢速網路要數秒）
-- [ ] 失敗後可重試：promise 快取在失敗時要清掉，否則第二次點擊會拿到同一個 rejected promise 而永遠無法恢復
+- [x] 失敗後可重試 —— **實測發現只清 promise 快取不夠**：瀏覽器的 module map 會快取失敗的 import，同一個 URL 之後不再發請求（請求數停在 1）。改成重試時附加 `?_r=N` 換掉 module specifier，實測連續三次各自都真的重發（1→2→3）
 - [ ] 版本 pin 明確（`libheif-js@1.19.8`），不用 `@latest` / `@1`
 - [ ] 沒有 SRI 是已知且**已記錄**的 gap（`integrity` 對動態 `import()` 無效），與現有 jSquash 一致，不是這次新增的疏漏
 
