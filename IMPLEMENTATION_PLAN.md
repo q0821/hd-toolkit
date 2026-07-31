@@ -494,3 +494,33 @@ AI 自動去背已「堪用」（imgly fp16 + 碎屑清理）；再往上：① 
 | 2026-05-27 | 預設 tilt enabled（checkbox 預先打勾） | 使用者要求「都隨機傾斜」，預設打開符合預期；想關掉再關 |
 | 2026-05-27 | tilt 範圍固定 ±2°，不出 slider | 多一條 slider 沒太大價值；±2° 是常見的微微歪斜程度，要更大會看起來「故意做歪」 |
 | 2026-05-27 | renderCurrentPage 加 `_renderTask.cancel()` 取消競態 | 切頁太快時 pdf.js 會丟 race error；加 cancel + catch RenderingCancelledException 是 pdf.js 官方建議做法 |
+
+---
+
+# 追加：HEIC / HEIF 輸入支援（2026-07-31）
+
+讓 iPhone 的 `.heic` 照片可以直接丟進 `/image-compressor` 與 `/image-slicer`，不必先轉檔。設計與 preflight 見 `docs/superpowers/specs/2026-07-31-heic-support-design.md`、`-preflight.md`。
+
+## 階段 14：HEIC 輸入 `image-compressor` + `image-slicer`
+- 新增共用模組 `static/shared/heic-decode.js`（IIFE 全域 `HeicDecode`，比照 `chroma-key.js`）：`isHeic()` / `decodeToImageData()` / `decodeToCanvas()` / `preload()`
+- 解碼器 `libheif-js@1.19.8`（jsDelivr ESM bundle，1.46 MB，wasm 內嵌單一檔）；lazy import + promise 快取，**失敗時清快取讓使用者能重試**
+- `isHeic()` 三層判斷：MIME → 副檔名 → magic bytes（僅前兩層無結論才用，且明確排除 `avif` / `avis` brand）
+- image-compressor：`accept` 加 HEIC、`addFiles()` 改 async 並用 queue 保序、`decodeFile()` 加分支、選「原格式」時落 JPEG 並在列上標 `HEIC → JPG`、HEIC 縮圖先放 SVG 佔位壓完再用結果補、per-item 錯誤訊息不再截斷成 40 字（改列內截斷 + `title` 完整）
+- image-slicer：`state` 加 `imgW` / `imgH` 取代四處 `naturalWidth`、`loadFile()` 拆成 `loadHeic` / `loadBitmap` 並加 `loadSeq` 換檔序號防競態、HEIC 走 `previewCanvas`、`accept` 維持 `image/*` 只補 `.heic` / `.heif` 副檔名（收斂成白名單會擋掉原本能用的 SVG / BMP，屬不該有的行為變更）
+- 資源限制：單張 **50 MP** 上限，檢查點在 `get_width/get_height` 之後、`display()` 之前（配置記憶體之前）
+- 測試：`tests/test_heic_support.py` 守前端資產接線（模組可取得、兩頁有引用、accept 含 HEIC、AVIF 防線還在、其餘三個工具沒被順手改）
+
+**成功標準**：iPhone `.heic` 丟進壓縮工具能壓成 JPEG 並顯示壓縮率；丟進切片工具能預覽、切割、打包 ZIP；AVIF 不被誤判；超大檔與壞檔不會拖垮整批
+
+**狀態**：完成（Playwright 無頭實測：`isHeic` 9/9、解碼與原圖平均色差 < 5、批次 5 檔全過、56 MP 正確擋下且 heap 只漲 13 MB、切片 9 塊尺寸正確、快速換檔競態兩方向皆正確、手機 390px 與亮 / 暗模式無 regression、pytest 13 passed）— **待使用者以真實 iPhone 直式照片驗證 EXIF / irot 方向**
+
+## 追加決策紀錄
+| Date | Decision | Rationale |
+|------|----------|-----------|
+| 2026-07-31 | 解碼器選 `libheif-js@1.19.8`，非 `heic-to` | 直接吐 RGBA 可組 `ImageData`，接上現有 `maybeResize` → `encodeImage` 管線、下游零改動；`heic-to` 只吐 PNG/JPEG Blob，會多一次無謂的編解碼 |
+| 2026-07-31 | HEIC 只做輸入不做輸出；選「原格式」落 JPEG | HEVC 編碼有專利授權疑慮且相容性差，AVIF 已能替代；JPEG 是 iPhone 照片典型去向（上傳 / 寄件）最不會出錯的落點 |
+| 2026-07-31 | `heic-decode.js` 用 IIFE 全域而非 ESM export | image-slicer 是普通 `<script>` 非 module；全域形式讓兩頁用同一種引入方式，且動態 `import()` 在非 module script 裡照樣可用 |
+| 2026-07-31 | magic bytes 只當第三層 fallback，且先排除 avif / avis brand | AVIF 與 HEIC 共用 ISO BMFF 容器、compatible brands 都可能有 `mif1`；判斷寫鬆會把既有 AVIF 支援搶走（功能倒退） |
+| 2026-07-31 | 加 50 MP 單張上限，且只套用在 HEIC 路徑 | HEIC 壓縮率遠高於 JPEG，2 MB 的檔案就可能是 56 MP、解碼後佔 224 MB；兩個工具原本都沒有任何上限。只限 HEIC 是為了不改變既有格式的行為 |
+| 2026-07-31 | 範圍只做 compressor + slicer，不推 bg-remover / sticker-ai / invoice-stamp | 使用者選定；先在兩個最常吃大量照片的工具驗證真實 iPhone 檔，過了再擴散（共用模組已抽好，之後只要引用） |
+| 2026-07-31 | 不加 SRI，與既有 jSquash 動態 import 一致 | `integrity` 屬性對動態 `import()` 無效；屬全站既有 gap（6 個 jSquash 包也都沒有），不在此 feature 混改 |

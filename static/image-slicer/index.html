@@ -66,10 +66,12 @@
         <div class="section">
           <div class="section__label"><span class="section__num">01</span> 上傳圖片</div>
           <div class="dropzone" id="dropzone">
-            <input type="file" id="fileInput" accept="image/*" hidden>
+            <!-- 維持 image/*（原本就吃 SVG / BMP 等），另加 .heic / .heif 副檔名：
+                 部分平台對 HEIC 回空 MIME，只靠 image/* 會選不到檔 -->
+            <input type="file" id="fileInput" accept="image/*,.heic,.heif" hidden>
             <svg class="dropzone__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M8.5 10a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3z"/><path d="M21 15l-5-5L5 21"/></svg>
             <div class="dropzone__title">拖曳圖片到這裡</div>
-            <div class="dropzone__hint">或點擊選擇檔案（PNG / JPG / WEBP / GIF）</div>
+            <div class="dropzone__hint">或點擊選擇檔案（PNG / JPG / WEBP / GIF / HEIC）</div>
             <span class="dropzone__file" id="fileName"></span>
           </div>
         </div>
@@ -176,6 +178,7 @@
   </main>
 
   <script src="/static/shared/chroma-key.js"></script>
+  <script src="/static/shared/heic-decode.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
   <script>
   (function () {
@@ -200,8 +203,11 @@
       previewImg: $('previewImg'), previewCanvas: $('previewCanvas'), previewGrid: $('previewGrid'), previewCaption: $('previewCaption')
     };
 
-    var state = { cols: 3, rows: 3, format: 'png', img: null, imgURL: null, busy: false,
+    // img 可能是 <img>（一般格式）或 <canvas>（HEIC 解碼後），所以尺寸另外存，
+    // 不再直接讀 naturalWidth / naturalHeight
+    var state = { cols: 3, rows: 3, format: 'png', img: null, imgW: 0, imgH: 0, imgURL: null, busy: false,
                   chroma: false, chromaTolerance: 40, chromaCanvas: null, chromaDirty: false };
+    var loadSeq = 0; // 換檔序號：HEIC 解碼是非同步的，快速連換時只有最後一次能寫入 state
 
     function clamp(n) { return Math.max(MIN, Math.min(MAX, n)); }
     function showError(msg) { els.errorText.textContent = msg; els.errorMsg.classList.add('is-shown'); els.successMsg.classList.remove('is-shown'); }
@@ -266,16 +272,23 @@
     }
     function ensureChroma() { if (state.chroma && (state.chromaDirty || !state.chromaCanvas)) runChroma(); }
 
+    // HEIC 來源是 canvas，沒有能塞進 <img> 的 URL，一律走 previewCanvas
+    function isCanvasSource() { return !!state.img && state.img.tagName === 'CANVAS'; }
+
     function refreshPreviewImage() {
       if (!state.img) return;
+      var useCanvas = state.chroma || isCanvasSource();
       if (state.chroma) {
         ensureChroma();
-        els.previewImg.hidden = true; els.previewCanvas.hidden = false;
-        els.previewFigure.classList.add('slicer-figure--checker');
-      } else {
-        els.previewCanvas.hidden = true; els.previewImg.hidden = false;
-        els.previewFigure.classList.remove('slicer-figure--checker');
+      } else if (useCanvas) {
+        // 去綠幕開了又關時，previewCanvas 裡是去綠幕後的畫面，要重畫回原圖
+        var c = els.previewCanvas;
+        c.width = state.imgW; c.height = state.imgH;
+        c.getContext('2d').drawImage(state.img, 0, 0);
       }
+      els.previewImg.hidden = useCanvas;
+      els.previewCanvas.hidden = !useCanvas;
+      els.previewFigure.classList.toggle('slicer-figure--checker', state.chroma);
     }
 
     function sliceSource() { return (state.chroma && state.chromaCanvas) ? state.chromaCanvas : state.img; }
@@ -290,7 +303,7 @@
     function renderGridOverlay() {
       els.previewGrid.replaceChildren();
       if (!state.img) return;
-      var W = state.img.naturalWidth, H = state.img.naturalHeight;
+      var W = state.imgW, H = state.imgH;
       var xs = tileEdges(W, state.cols), ys = tileEdges(H, state.rows), i;
       for (i = 1; i < xs.length - 1; i++) {
         var v = document.createElement('div'); v.className = 'gl-v';
@@ -304,7 +317,7 @@
 
     function updateCaption() {
       if (!state.img) return;
-      var W = state.img.naturalWidth, H = state.img.naturalHeight;
+      var W = state.imgW, H = state.imgH;
       els.previewCaption.textContent = (state.chroma ? '已去綠幕 ｜ ' : '') + '原圖 ' + W + ' × ' + H +
         ' ｜ 每塊約 ' + Math.floor(W / state.cols) + ' × ' + Math.floor(H / state.rows) + ' px';
     }
@@ -314,24 +327,59 @@
       syncCounter(); syncSliceBtn();
     }
 
+    // node 是 <img> 或 <canvas>；url 只有 <img> 那條路徑有（HEIC 沒有可直接顯示的 URL）
+    function applyLoaded(file, node, w, h, url) {
+      if (state.imgURL) { URL.revokeObjectURL(state.imgURL); state.imgURL = null; }
+      state.img = node; state.imgW = w; state.imgH = h; state.imgURL = url || null;
+      state.chromaCanvas = null; state.chromaDirty = true;
+      els.fileName.textContent = file.name + '  ·  ' + w + '×' + h;
+      els.fileName.classList.add('is-shown');
+      if (url) els.previewImg.src = url;
+      els.previewEmpty.hidden = true; els.previewStage.hidden = false;
+      refreshPreview();
+    }
+
     function loadFile(file) {
       hideMessages();
       if (!file) return;
-      if (!file.type || file.type.indexOf('image/') !== 0) { showError('請選擇圖片檔（PNG / JPG / WEBP / GIF 等）。'); return; }
-      if (state.imgURL) { URL.revokeObjectURL(state.imgURL); state.imgURL = null; }
+      var seq = ++loadSeq; // 之後每個非同步回呼都要確認自己還是最新那次選擇
+      return HeicDecode.isHeic(file).then(function (heic) {
+        if (seq !== loadSeq) return;
+        return heic ? loadHeic(file, seq) : loadBitmap(file, seq);
+      });
+    }
+
+    function loadHeic(file, seq) {
+      els.fileName.textContent = '正在載入 HEIC 解碼器…';
+      els.fileName.classList.add('is-shown');
+      return file.arrayBuffer().then(function (buf) {
+        return HeicDecode.decodeToCanvas(buf);
+      }).then(function (canvas) {
+        if (seq !== loadSeq) return; // 使用者已經換了別張，這次結果丟掉
+        applyLoaded(file, canvas, canvas.width, canvas.height, null);
+      }).catch(function (e) {
+        if (seq !== loadSeq) return;
+        els.fileName.classList.remove('is-shown');
+        showError(e && e.message ? e.message : 'HEIC 解碼失敗。');
+      });
+    }
+
+    function loadBitmap(file, seq) {
+      if (!file.type || file.type.indexOf('image/') !== 0) {
+        showError('請選擇圖片檔（PNG / JPG / WEBP / GIF / HEIC）。'); return;
+      }
       var url = URL.createObjectURL(file);
       var img = new Image();
       img.onload = function () {
+        if (seq !== loadSeq) { URL.revokeObjectURL(url); return; }
         if (!img.naturalWidth || !img.naturalHeight) { URL.revokeObjectURL(url); showError('無法讀取這張圖片的尺寸。'); return; }
-        state.img = img; state.imgURL = url;
-        state.chromaCanvas = null; state.chromaDirty = true;
-        els.fileName.textContent = file.name + '  ·  ' + img.naturalWidth + '×' + img.naturalHeight;
-        els.fileName.classList.add('is-shown');
-        els.previewImg.src = url;
-        els.previewEmpty.hidden = true; els.previewStage.hidden = false;
-        refreshPreview();
+        applyLoaded(file, img, img.naturalWidth, img.naturalHeight, url);
       };
-      img.onerror = function () { URL.revokeObjectURL(url); showError('這個檔案無法當作圖片載入。'); };
+      img.onerror = function () {
+        URL.revokeObjectURL(url);
+        if (seq !== loadSeq) return;
+        showError('這個檔案無法當作圖片載入。');
+      };
       img.src = url;
     }
 
@@ -352,7 +400,7 @@
       var fmt = FORMAT[state.format];
       var quality = fmt.lossy ? (parseInt(els.qualitySlider.value, 10) / 100) : undefined;
       var prefix = sanitizePrefix(els.prefixInput.value); // 可為空字串
-      var W = state.img.naturalWidth, H = state.img.naturalHeight;
+      var W = state.imgW, H = state.imgH;
       var xs = tileEdges(W, cols), ys = tileEdges(H, rows);
 
       state.busy = true; hideMessages();

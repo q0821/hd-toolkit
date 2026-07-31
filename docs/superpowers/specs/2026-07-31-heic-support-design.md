@@ -50,13 +50,15 @@
 
 ## 架構
 
-新增 `static/shared/heic-decode.js`，位置與角色比照既有的 `static/shared/chroma-key.js`（同樣是兩個工具共用的影像處理模組）。
+新增 `static/shared/heic-decode.js`，位置與角色比照既有的 `static/shared/chroma-key.js`（同樣是兩個工具共用的影像處理模組），並沿用它的 **IIFE 全域**形式而非 ESM export：image-slicer 是普通 `<script>`（非 module），全域物件讓兩頁用同一種引入方式。動態 `import()` 是表達式，在非 module script 裡一樣能用，所以模組內部照樣能 lazy load libheif 的 ESM。
 
 ```
-static/shared/heic-decode.js  （ESM）
-├── isHeic(file)                  → Promise<boolean>   三層判斷，見下節
-├── decodeHeicToImageData(buf)    → Promise<ImageData>
-└── preloadHeicDecoder()          → Promise<void>      可選暖機
+static/shared/heic-decode.js  （IIFE，掛 window.HeicDecode）
+├── isHeic(file)              → Promise<boolean>    三層判斷，見下節
+├── decodeToImageData(buf)    → Promise<ImageData>  compressor 用（直接接 jSquash）
+├── decodeToCanvas(buf)       → Promise<canvas>     slicer 用
+├── preload()                 → Promise             載入回饋用的暖機
+└── MAX_PIXELS                                       單張像素上限
 ```
 
 模組內以 module-level promise 快取 libheif 的 import 與 factory 實例，重複呼叫只載入一次，與 image-compressor 現有的 `getCodec()` 快取策略一致。
@@ -77,6 +79,8 @@ File → arrayBuffer() → isHeic? ──否──→ 各工具既有路徑（jS
      compressor: maybeResize → encodeImage → Blob
      slicer:     putImageData 進 canvas → 當作 state.img
 ```
+
+`decodeFile()` 只多一行分支，`maybeResize` / `encodeImage` / 切片 / ZIP 等下游一律不動 —— 這是選 libheif-js 而非 heic-to 換來的好處。
 
 ## `isHeic()` 的三層判斷
 
@@ -121,7 +125,9 @@ AVIF 與 HEIC 都是 ISO BMFF 容器，`ftyp` box 的 compatible brands 都可�
 - `loadFile()` 改 async：HEIC → `decodeHeicToImageData()` → `putImageData` 進 canvas → `state.img = canvas`
 - 預覽：非 HEIC 維持 `previewImg` + objectURL 路徑；HEIC 走既有的 `previewCanvas`（去綠幕模式本來就在用，設施現成）
 - `ChromaKey.process()` 與 `drawImage()` 都接受 canvas，切片與 ZIP 流程不需更動
-- `accept` 從 `image/*` 收斂為明確清單 + HEIC，順帶修掉「什麼都收、TIFF 之類進來才失敗」的既有問題
+- `accept` **維持 `image/*`**，只補上 `.heic,.heif` 副檔名（部分平台對 HEIC 回空 MIME，只靠 `image/*` 選不到檔）
+
+> 修正：設計初稿寫的是「把 `accept` 收斂成明確白名單」。實作後檢查 diff 時發現那會擋掉原本能用的 SVG / BMP，屬於本 feature 不該造成的行為變更（違反自己訂的 Non-scope），已改回不收窄，並加測試 `test_slicer_did_not_narrow_its_accept` 守住。
 
 ## 載入回饋與錯誤處理
 
@@ -164,6 +170,25 @@ HEIC 的壓縮率遠高於 JPEG，一個 5 MB 的檔案可能是 48 MP，解碼�
 10. slicer 快速連續換檔 → 最後選的那張才是畫面上的那張
 
 後端 `tests/` 僅能守頁面路由不 regress；實際解碼驗證走無頭瀏覽器實測，與本專案前幾個工具的作法一致。
+
+### 實測結果（2026-07-31，Playwright 無頭瀏覽器）
+
+素材以 `sips` 產生：`sample.heic`（1600×900，brand `heic`）、`portrait.heic`（900×1600）、`sample.avif`（brand `avif`）、`broken.heic`（截斷至 3000 bytes）、`huge.heic`（8000×7000＝56 MP，檔案僅 2.06 MB）。
+
+| 項目 | 結果 |
+|------|------|
+| `isHeic()` 9 個案例（含 AVIF 無副檔名 + 空 MIME 的最嚴苛情境） | 9/9 通過 |
+| 解碼正確性（與瀏覽器原生解出的 PNG 逐像素比對） | 平均色差 R 4.19 / G 1.96 / B 2.96；通道對調後為 83.44，證明 RGB 順序正確 |
+| 批次混合 JPEG + PNG + AVIF + HEIC + 空 MIME HEIC | 5/5 成功，HEIC → JPG −40%，AVIF 仍走原路徑 |
+| 56 MP 超限 | 正確擋下，JS heap 僅 19 → 32 MB（未配置那 224 MB） |
+| 截斷壞檔 | 該列報錯，同批其他檔案照常完成 |
+| slicer HEIC 切割 + ZIP | 9 塊，首塊 300×533（900×1600 切 3×3）正確 |
+| slicer 去綠幕開 / 關切換 | 關閉後 previewCanvas 正確畫回原圖 |
+| slicer 快速換檔競態（兩個方向） | generation 計數有效，最終畫面都是最後選的那張 |
+| 手機寬度 390px、亮 / 暗模式 | 無橫向捲軸、無溢出，佔位圖示走 design token |
+| pytest | 13 passed（既有 8 + 新增 5） |
+
+**未能驗證的一項**：帶 `irot` / EXIF orientation flag 的真實 iPhone 照片。`sips` 產出的直式檔是實際旋轉像素而非設 flag，本機也沒有 exiftool 可構造。libheif 上游預設會套用 HEIF 的 transformative properties，且 libheif-js 未暴露關閉選項，理論上正確，但**這條需要使用者拿自己的 iPhone 直式照片實測**。
 
 ## 決策紀錄
 
