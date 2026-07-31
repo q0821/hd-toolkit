@@ -130,6 +130,23 @@ AVIF 與 HEIC 都是 ISO BMFF 容器，`ftyp` box 的 compatible brands 都可�
 - compressor 在按下壓縮、slicer 在選檔時，若偵測到 HEIC 就顯示「正在載入 HEIC 解碼器…」訊息，載完清除
 - 載入失敗（CDN 被擋 / 離線）給 `.message--error`，文案比照現有 jSquash、JSZip 失敗的處理
 - 解碼失敗（檔案損毀 / 截斷）在 compressor 只讓該列失敗，**不中斷整批**（沿用現有 per-item try/catch）；在 slicer 顯示錯誤並保留前一張圖
+- **promise 快取在載入失敗時必須清除**，否則第二次嘗試會拿到同一個 rejected promise，使用者永遠無法重試
+
+## 資源限制（preflight 補入）
+
+HEIC 的壓縮率遠高於 JPEG，一個 5 MB 的檔案可能是 48 MP，解碼成 RGBA 後佔用 192 MB。兩個工具目前**都沒有任何檔案大小或像素數上限**（`IMPLEMENTATION_PLAN.md` 階段 8 寫了「單檔過大提示」但未實作），批次幾張大 HEIC 就足以讓分頁崩潰。
+
+- 單張上限 **50 MP**（涵蓋 iPhone 48 MP ProRAW，擋掉明顯異常的檔案）
+- 檢查點放在 `get_width()` / `get_height()` 之後、`display()` 之前，也就是**在真正配置那塊記憶體之前**就中止
+- 超限訊息要告知實際像素數，不要只說「太大」
+- 這個限制**只套用於 HEIC 路徑**，不改變既有 JPEG / PNG / WEBP / AVIF 的行為
+
+## 非同步競態
+
+兩個工具的檔案處理函式都要改成 async，各自有一個競態要處理：
+
+- compressor 的 `addFiles()`：連續拖放多批檔案時，`state.items` 的寫入順序與 `renderList()` 時機要維持一致
+- slicer 的 `loadFile()`：快速換檔時可能「後選的先解完、再被先選的覆蓋」。需要 generation 計數，解碼完成後確認自己仍是最新一次請求才寫入 state
 
 ## 驗證
 
@@ -143,6 +160,8 @@ AVIF 與 HEIC 都是 ISO BMFF 容器，`ftyp` box 的 compatible brands 都可�
 6. 截斷 / 損毀的 HEIC → 該列顯示錯誤，其餘檔案照常完成
 7. image-slicer：HEIC + 去綠幕 + 切割 + ZIP 全流程
 8. 亮 / 暗模式、手機寬度無版面 regression
+9. 超過 50 MP 的 HEIC → 明確拒絕且不吃爆記憶體
+10. slicer 快速連續換檔 → 最後選的那張才是畫面上的那張
 
 後端 `tests/` 僅能守頁面路由不 regress；實際解碼驗證走無頭瀏覽器實測，與本專案前幾個工具的作法一致。
 
