@@ -27,11 +27,19 @@
     }
 
     .ai-entry { display: flex; align-items: center; gap: var(--space-2); margin-top: var(--space-2); flex-wrap: wrap; }
+    .ai-entry__head { display: flex; align-items: end; gap: var(--space-2); margin-top: var(--space-3); }
+    .ai-entry__head-spacer { width: 22px; flex-shrink: 0; }
+    .ai-entry__head-title { flex: 1 1 80px; }
+    .ai-entry__head-desc { flex: 1.6 1 120px; }
+    .ai-entry__head-rm { width: 48px; flex-shrink: 0; }
     .ai-entry__num { font-family: var(--font-mono); font-size: 12px; color: var(--text-dim); width: 22px; flex-shrink: 0; }
     .ai-entry__desc { flex: 1.6 1 120px; min-width: 0; }
     .ai-entry__title { flex: 1 1 80px; min-width: 0; }
     .ai-entry .text-field { padding: 7px 10px; font-size: 13px; }
     .ai-entry__rm { padding: 6px 8px; font-size: 12px; flex-shrink: 0; }
+    .ai-bulk { margin-top: var(--space-3); }
+    .ai-bulk textarea { min-height: 104px; resize: vertical; line-height: 1.6; }
+    .ai-bulk__actions { display: flex; justify-content: flex-end; margin-top: var(--space-2); }
 
     select.text-field { -webkit-appearance: none; appearance: none; padding-right: 28px;
       background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%237c705c' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M6 9l6 6 6-6'/></svg>");
@@ -116,7 +124,20 @@
         </div>
 
         <div class="section">
-          <div class="section__label"><span class="section__num">03</span> 表情 / 動作（一條 = 一張貼圖）</div>
+          <div class="section__label"><span class="section__num">03</span> 貼圖內容（一條 = 一張貼圖）</div>
+          <div class="ai-bulk">
+            <label class="field-label" for="bulkEntries">批次貼上（每行：標題|動作說明）</label>
+            <textarea class="text-field" id="bulkEntries" placeholder="嗨|笑著揮手打招呼&#10;哈哈哈|開心大笑"></textarea>
+            <div class="ai-bulk__actions">
+              <button type="button" class="btn btn--secondary" id="bulkApplyBtn" style="padding:6px 14px;font-size:13px">套用並取代目前清單</button>
+            </div>
+          </div>
+          <div class="ai-entry__head" aria-hidden="true">
+            <span class="ai-entry__head-spacer"></span>
+            <span class="field-label ai-entry__head-title">貼圖顯示文字</span>
+            <span class="field-label ai-entry__head-desc">表情 / 動作描述</span>
+            <span class="ai-entry__head-rm"></span>
+          </div>
           <div id="entryList"></div>
           <button type="button" class="btn btn--secondary mt-4" id="addEntryBtn" style="padding:6px 14px;font-size:13px">+ 新增一條</button>
           <p class="ai-status hint-line" id="countStatus" style="color:var(--text-muted)"></p>
@@ -145,10 +166,8 @@
               <div>
                 <span class="field-label">模型</span>
                 <select class="text-field" id="openaiModel">
-                  <option value="gpt-image-1.5" selected>gpt-image-1.5（支援透明、不需驗證組織）</option>
-                  <option value="gpt-image-1">gpt-image-1（最穩定、支援透明）</option>
-                  <option value="gpt-image-2">GPT Image 2（最新；需先驗證組織、不支援透明背景）</option>
-                  <option value="gpt-image-2-2026-04-21">gpt-image-2-2026-04-21（快照；同上）</option>
+                  <option value="gpt-image-2" selected>GPT Image 2（最新、不支援透明背景）</option>
+                  <option value="gpt-image-2-2026-04-21">GPT Image 2（2026-04-21 快照）</option>
                   <option value="__custom__">自訂…</option>
                 </select>
               </div>
@@ -177,7 +196,7 @@
 
           <p class="hint-line" id="keyStatus" style="margin-top:var(--space-3)"></p>
           <button type="button" class="btn btn--ghost" id="openSettingsBtn" style="margin-top:var(--space-2);padding:6px 12px;font-size:13px">到「設定」填 / 改 API key</button>
-          <p class="hint-line" style="margin-top:var(--space-2)">API key 在站台「設定」面板統一管（右上齒輪），只存在你的瀏覽器；請求時經本站薄 proxy 轉給 AI 服務、用完即丟、不留存。生圖要錢、用你自己的 key —— 一組 8~24 張視模型 / 品質約 US$0.3~5。OpenAI 的 <code style="font-family:var(--font-mono)">gpt-image-2</code> / 快照版需先到 OpenAI 後台驗證組織才能用（<code style="font-family:var(--font-mono)">platform.openai.com/settings/organization/general</code> →「Verify Organization」，身分驗證、幾分鐘生效）；不想驗證就選 <code style="font-family:var(--font-mono)">gpt-image-1</code>，或改用 Google。</p>
+          <p class="hint-line" style="margin-top:var(--space-2)">API key 在站台「設定」面板統一管（右上齒輪），只存在你的瀏覽器；請求時經本站薄 proxy 轉給 AI 服務、用完即丟、不留存。生圖要錢、用你自己的 key。一組 8～24 張視模型 / 品質約 US$0.3～5。OpenAI 可能要求先到後台完成 API 組織驗證（<code style="font-family:var(--font-mono)">platform.openai.com/settings/organization/general</code> →「Verify Organization」）；若帳號暫時無法使用，可改用 Google。</p>
         </div>
 
         <div class="section">
@@ -203,7 +222,7 @@
             <span class="field-label">四周留白</span>
             <div class="range-field"><input type="range" id="padSlider" min="0" max="40" value="10"><span class="range-field__val" id="padVal">10</span></div>
           </div>
-          <p class="hint-line">「綠幕去背」會請 AI 把主體畫在純綠底上、再用內建去背把綠去掉（跨服務 / 跨模型最穩，推薦）。「模型透明」只有部分模型支援（OpenAI `gpt-image-1.5` / `gpt-image-1`、Gemini 等；**`gpt-image-2` 不支援、會被擋**）。會用第 1 張生 <code style="font-family:var(--font-mono)">main.png</code>(240×240) / <code style="font-family:var(--font-mono)">tab.png</code>(96×74)。</p>
+          <p class="hint-line">「綠幕去背」會請 AI 把主體畫在純綠底上、再用內建去背把綠去掉（跨服務 / 跨模型最穩，推薦）。「模型透明」只有部分模型支援；OpenAI 的 <code style="font-family:var(--font-mono)">gpt-image-2</code> 不支援，選擇時會被擋下。會用第 1 張生 <code style="font-family:var(--font-mono)">main.png</code>（240×240） / <code style="font-family:var(--font-mono)">tab.png</code>（96×74）。</p>
         </div>
 
         <button type="button" class="btn btn--primary btn--block" id="goBtn" disabled>先填 API key</button>
@@ -282,6 +301,7 @@
     var els = {
       dropzone: $("dropzone"), fileInput: $("fileInput"), fileName: $("fileName"),
       styleSeg: $("styleSeg"), styleExtra: $("styleExtra"),
+      bulkEntries: $("bulkEntries"), bulkApplyBtn: $("bulkApplyBtn"),
       entryList: $("entryList"), addEntryBtn: $("addEntryBtn"), countStatus: $("countStatus"),
       titleSeg: $("titleSeg"),
       providerSeg: $("providerSeg"), paneOpenai: $("paneOpenai"), paneGoogle: $("paneGoogle"),
@@ -412,17 +432,43 @@
     }
 
     // ---------- 表情清單 ----------
+    function parseBulkEntries(raw) {
+      var entries = [], invalidLines = [];
+      String(raw || "").split(/\r?\n/).forEach(function (rawLine, i) {
+        var line = rawLine.trim();
+        if (!line) return;
+        var separator = line.indexOf("|");
+        if (separator < 0) { invalidLines.push(i + 1); return; }
+        var title = line.slice(0, separator).trim();
+        var desc = line.slice(separator + 1).trim();
+        if (!title || !desc) { invalidLines.push(i + 1); return; }
+        entries.push({ title: title, desc: desc });
+      });
+      return { entries: entries, invalidLines: invalidLines };
+    }
+    function applyBulkEntries() {
+      if (state.busy) return;
+      var parsed = parseBulkEntries(els.bulkEntries.value);
+      if (parsed.invalidLines.length) {
+        showError("第 " + parsed.invalidLines.join("、") + " 行格式不完整，請使用「標題|動作說明」。"); return;
+      }
+      if (!parsed.entries.length) { showError("請先貼上至少一筆「標題|動作說明」。"); return; }
+      if (parsed.entries.length > MAX_ENTRIES) { showError("一次最多可套用 " + MAX_ENTRIES + " 筆貼圖內容。"); return; }
+      state.entries = parsed.entries;
+      renderEntries(); updateCountStatus(); refreshPlanNote(); syncControls();
+      showSuccess("已套用 " + parsed.entries.length + " 筆貼圖內容，並取代原本清單。");
+    }
     function renderEntries() {
       els.entryList.replaceChildren();
       state.entries.forEach(function (e, i) {
         var row = el("div", "ai-entry");
-        var d = el("input", "text-field ai-entry__desc"); d.type = "text"; d.value = e.desc; d.placeholder = "表情 / 動作"; d.autocomplete = "off";
+        var d = el("input", "text-field ai-entry__desc"); d.type = "text"; d.value = e.desc; d.placeholder = "例如：笑著揮手打招呼"; d.setAttribute("aria-label", "表情 / 動作描述"); d.autocomplete = "off";
         d.addEventListener("input", function () { e.desc = d.value; });
-        var t = el("input", "text-field ai-entry__title"); t.type = "text"; t.value = e.title; t.placeholder = "標題"; t.autocomplete = "off";
+        var t = el("input", "text-field ai-entry__title"); t.type = "text"; t.value = e.title; t.placeholder = "例如：嗨"; t.setAttribute("aria-label", "貼圖顯示文字"); t.autocomplete = "off";
         t.addEventListener("input", function () { e.title = t.value; });
         var rm = el("button", "btn btn--ghost ai-entry__rm", "移除"); rm.type = "button";
         rm.addEventListener("click", function () { if (state.busy) return; state.entries.splice(i, 1); renderEntries(); updateCountStatus(); refreshPlanNote(); syncControls(); });
-        row.append(el("span", "ai-entry__num", pad2(i + 1)), d, t, rm);
+        row.append(el("span", "ai-entry__num", pad2(i + 1)), t, d, rm);
         els.entryList.appendChild(row);
       });
     }
@@ -435,7 +481,7 @@
 
     // ---------- 模型 / key ----------
     function currentModel() {
-      if (state.provider === "openai") { var v = els.openaiModel.value; return v === "__custom__" ? (els.openaiModelCustom.value.trim() || "gpt-image-1.5") : v; }
+      if (state.provider === "openai") { var v = els.openaiModel.value; return v === "__custom__" ? (els.openaiModelCustom.value.trim() || "gpt-image-2") : v; }
       var g = els.googleModel.value; return g === "__custom__" ? (els.googleModelCustom.value.trim() || "gemini-3-pro-image-preview") : g;
     }
     function currentKey() { return (window.Settings ? Settings.getKey(state.provider) : ""); }
@@ -501,7 +547,7 @@
       if (!state.entries.length) { showError("請至少加一條表情。"); return; }
       if (typeof JSZip === "undefined") { showError("打包元件（JSZip）載入失敗，請檢查網路後重新整理。"); return; }
       if (state.bgMode === "transparent" && state.provider === "openai" && currentModel().indexOf("gpt-image-2") === 0) {
-        showError("gpt-image-2 不支援透明背景。請把上面的「背景」改成「綠幕去背」，或把 OpenAI 模型換成 gpt-image-1.5 / gpt-image-1。"); return;
+        showError("gpt-image-2 不支援透明背景。請把上面的「背景」改成「綠幕去背」，或改用支援透明背景的其他服務。"); return;
       }
       var n = state.entries.length;
       state.busy = true; hideMessages(); syncControls();
@@ -623,6 +669,8 @@
       els.chromaSlider.disabled = state.bgMode !== "chroma" || state.busy;
       els.padSlider.disabled = state.busy;
       els.addEntryBtn.disabled = state.busy || n >= MAX_ENTRIES;
+      els.bulkEntries.disabled = state.busy;
+      els.bulkApplyBtn.disabled = state.busy;
       [els.styleSeg, els.titleSeg, els.providerSeg, els.bgSeg, els.fitSeg].forEach(function (seg) { seg.querySelectorAll(".segmented__btn").forEach(function (b) { b.disabled = state.busy; }); });
     }
 
@@ -642,6 +690,7 @@
     els.chromaSlider.addEventListener("input", function () { state.chromaTol = parseInt(els.chromaSlider.value, 10); els.chromaVal.textContent = state.chromaTol; });
     els.padSlider.addEventListener("input", function () { state.pad = parseInt(els.padSlider.value, 10); els.padVal.textContent = state.pad; });
     els.styleExtra.addEventListener("input", function () {});
+    els.bulkApplyBtn.addEventListener("click", applyBulkEntries);
     els.addEntryBtn.addEventListener("click", function () { if (state.busy || state.entries.length >= MAX_ENTRIES) return; state.entries.push({ desc: "", title: "" }); renderEntries(); updateCountStatus(); refreshPlanNote(); syncControls(); });
 
     els.openaiModel.addEventListener("change", function () { syncModelCustom(); refreshPlanNote(); });
