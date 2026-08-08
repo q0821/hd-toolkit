@@ -65,7 +65,7 @@ def test_sticker_page_exposes_character_project_controls():
 def test_sticker_page_loads_character_project_module():
     body = _page()
     assert (
-        '<script src="/static/sticker-ai/character-project.js?v=1.0.12"></script>'
+        '<script src="/static/sticker-ai/character-project.js?v=1.0.13"></script>'
         in body
     )
 

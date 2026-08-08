@@ -40,6 +40,7 @@
   var $ = function (id) { return document.getElementById(id); };
   var els = {
     workflowSeg: $("workflowSeg"), workflowNote: $("workflowNote"), referenceSlots: $("referenceSlots"),
+    referenceCompleteness: $("referenceCompleteness"),
     characterFields: $("characterFields"), characterName: $("characterName"), fixedTraits: $("fixedTraits"),
     fixedAccessories: $("fixedAccessories"), defaultOutfit: $("defaultOutfit"),
     generateCharacterBtn: $("generateCharacterBtn"), approveCharacterBtn: $("approveCharacterBtn"),
@@ -70,6 +71,24 @@
       return els.openaiModel.value === "__custom__" ? (els.openaiModelCustom.value.trim() || "gpt-image-2") : els.openaiModel.value;
     }
     return els.googleModel.value === "__custom__" ? (els.googleModelCustom.value.trim() || "gemini-2.5-flash-image") : els.googleModel.value;
+  }
+
+  function availableReferenceAngles() {
+    return ANGLES.filter(function (angle) { return !!state.references[angle]; });
+  }
+
+  function syncReferenceCompleteness(summary) {
+    summary = summary || StickerCharacter.referenceCompleteness(availableReferenceAngles());
+    if (!summary.ready) {
+      els.referenceCompleteness.textContent = "參考完整度：" + summary.label + "。";
+      return;
+    }
+    var guidance = summary.level === "base"
+      ? "可以建立角色；加入其他角度可提高一致性。"
+      : summary.level === "better"
+        ? "可以建立角色；繼續加入角度可提高一致性。"
+        : "五個角度都已提供。";
+    els.referenceCompleteness.textContent = "參考完整度：" + summary.label + "（" + summary.count + "/5）。" + guidance;
   }
 
   function showError(message) {
@@ -212,7 +231,7 @@
 
   function syncCharacterStatus() {
     var messages = {
-      empty: "請先上傳五張參考圖並產生角色定稿圖。",
+      empty: "請先上傳主要／正面照片並產生角色定稿圖；其他角度可選填。",
       review: "定稿圖待確認。確認後才能用角色專案產生貼圖或匯出角色檔。",
       approved: "角色已確認，可用於後續批次並匯出角色檔。",
       invalidated: "角色設定或參考圖已變更，請重新產生並確認定稿圖。",
@@ -227,7 +246,7 @@
     var project = state.workflow === "project";
     els.characterFields.hidden = !project;
     els.workflowNote.textContent = project
-      ? "先用正面、上方、下方、左側、右側五張照片產生並確認角色定稿圖，再用同一角色持續生成不同批次。"
+      ? "主要／正面照片必填，其他角度選填。先產生並確認角色定稿圖，再用同一角色持續生成不同批次。"
       : "單次產生，不建立角色檔。主要／正面參考圖必填，其餘角度可提高同批一致性。";
     syncControls();
   }
@@ -303,19 +322,23 @@
       try { return StickerCharacter.splitCaption(entry.title).length > 0; }
       catch (error) { return false; }
     });
+    var referenceSummary = StickerCharacter.referenceCompleteness(availableReferenceAngles());
     var strictReady = state.workflow !== "project" || state.character.status === "approved";
-    var quickReferenceReady = state.workflow !== "quick" || !!state.references.front;
+    var quickReferenceReady = state.workflow !== "quick" || referenceSummary.ready;
+    var projectReferenceReady = state.workflow !== "project" || referenceSummary.ready;
     var model = selectedModel();
     var gpt2Transparent = state.provider === "openai" && model.indexOf("gpt-image-2") === 0 && state.bg === "transparent";
     els.goBtn.disabled = state.busy || !hasKey || !hasEntries || !strictReady || !quickReferenceReady || gpt2Transparent;
     els.goBtn.textContent = !hasKey ? "先填 API key" : !quickReferenceReady ? "先上傳主要／正面參考圖" : !strictReady ? "先確認角色" : gpt2Transparent ? "GPT Image 2 不支援透明背景" : state.busy ? "生成中…" : "開始生成貼圖";
     els.bulkApplyBtn.disabled = state.busy;
     els.addEntryBtn.disabled = state.busy || state.entries.length >= StickerCharacter.MAX_ENTRIES;
-    els.generateCharacterBtn.disabled = state.busy || state.workflow !== "project";
+    els.generateCharacterBtn.disabled = state.busy || state.workflow !== "project" || !projectReferenceReady;
+    els.generateCharacterBtn.textContent = !projectReferenceReady ? "先上傳主要／正面照片" : state.busy ? "產生中…" : "產生角色定稿圖";
     els.importCharacterBtn.disabled = state.busy;
     els.referenceSlots.querySelectorAll("button,input").forEach(function (control) { control.disabled = state.busy; });
     els.providerSeg.querySelectorAll("button").forEach(function (button) { button.disabled = state.busy; });
     els.workflowSeg.querySelectorAll("button").forEach(function (button) { button.disabled = state.busy; });
+    syncReferenceCompleteness(referenceSummary);
     syncCharacterStatus();
   }
 
@@ -340,9 +363,12 @@
   }
 
   function characterIdentityPrompt() {
+    var angles = availableReferenceAngles();
     var parts = [
-      "The input images show the same character from five labelled viewpoints in this order: front, top, bottom, left, right.",
-      "Treat them as identity references, not five separate people. Preserve the same face, hairstyle, body proportions, skin tone and distinguishing features.",
+      angles.length === 1
+        ? "The input image is the primary front identity reference for this character."
+        : "The input images show the same character in this labelled order: " + angles.join(", ") + ".",
+      "Treat every input as identity evidence for one character, not separate people. Preserve the same face, hairstyle, body proportions, skin tone and distinguishing features.",
       "Fixed traits: " + els.fixedTraits.value.trim() + ".",
     ];
     if (els.fixedAccessories.value.trim()) parts.push("Fixed accessories: " + els.fixedAccessories.value.trim() + ".");
@@ -368,7 +394,7 @@
     };
     if (state.workflow === "project") {
       prompt.push("The first input is the approved canonical character image. Match its identity strictly: face, hairstyle, body proportions, skin tone, fixed accessories and illustration style must remain the same.");
-      if (strict) prompt.push("The remaining five inputs are the same character from front, top, bottom, left and right viewpoints. Use them as additional identity evidence, not as separate characters.");
+      if (strict && references.length > 1) prompt.push("The remaining inputs are the available labelled reference photos in this order: " + availableReferenceAngles().join(", ") + ". Use them as additional identity evidence, not as separate characters.");
       prompt.push("Fixed traits: " + els.fixedTraits.value.trim() + ".");
       if (els.fixedAccessories.value.trim()) prompt.push("Fixed accessories: " + els.fixedAccessories.value.trim() + ".");
     } else if (references.length) {
@@ -502,7 +528,7 @@
         strictButton.type = "button";
         strictButton.className = "btn btn--ghost btn--sm ai-regen-strict";
         strictButton.dataset.i = String(index);
-        strictButton.title = "額外附上五張角度參考圖，圖片輸入成本較高";
+        strictButton.title = "額外附上目前已有的原始角度參考圖，圖片輸入成本較高";
         strictButton.textContent = "嚴格參考重生";
         actions.appendChild(strictButton);
       }
@@ -586,7 +612,7 @@
       if (state.outputs[index].url) URL.revokeObjectURL(state.outputs[index].url);
       state.outputs[index] = replacement;
       renderOutputs();
-      showSuccess("第 " + (index + 1) + " 張已重新生成。" + (strict ? "本次已附上五張角度參考圖。" : ""));
+      showSuccess("第 " + (index + 1) + " 張已重新生成。" + (strict ? "本次已附上 " + availableReferenceAngles().length + " 張角度參考圖。" : ""));
     } catch (error) {
       showError(error.message);
     } finally {
@@ -599,8 +625,7 @@
   async function generateCharacter() {
     if (state.busy) return;
     if (!currentKey()) { showError("請先填入所選 AI 服務的 API key。"); return; }
-    var missing = ANGLES.filter(function (angle) { return !state.references[angle]; });
-    if (missing.length) { showError("角色專案需要五張參考圖，尚缺：" + missing.map(function (angle) { return ANGLE_NAMES[angle]; }).join("、") + "。"); return; }
+    if (!state.references.front) { showError("角色專案至少需要主要／正面參考圖。"); return; }
     if (!els.fixedTraits.value.trim()) { showError("請填寫固定角色特徵。"); els.fixedTraits.focus(); return; }
     if (state.character.blob && !window.confirm("重新產生角色定稿圖會再次呼叫付費圖片 API，可能再次計費。是否繼續？")) return;
     if (state.character.blob) state.character.status = "invalidated";
@@ -613,7 +638,7 @@
       var blob = await generateRaw(buildCharacterPrompt(), referenceBlobs(true), true);
       setCharacterBlob(blob, "review", false);
       setProgress(1, 1, "待確認");
-      showSuccess("角色定稿圖已產生。請確認角色外觀後按「確認角色」。");
+      showSuccess("角色定稿圖已產生。本次使用 " + availableReferenceAngles().length + " 張參考圖，請確認角色外觀後按「確認角色」。");
     } catch (error) {
       showError((error.message || "角色定稿圖生成失敗。") + " 系統不會自動重試；手動重試可能再次計費。");
     } finally {
@@ -640,6 +665,7 @@
       fixedTraits: els.fixedTraits.value,
       fixedAccessories: els.fixedAccessories.value,
       defaultOutfit: els.defaultOutfit.value,
+      referenceAngles: availableReferenceAngles(),
     };
   }
 
@@ -663,7 +689,9 @@
       var zip = new JSZip();
       zip.file("manifest.json", JSON.stringify(manifest, null, 2));
       zip.file("character.png", state.character.blob);
-      ANGLES.forEach(function (angle) { zip.file(StickerCharacter.REFERENCE_PATHS[angle], state.references[angle].blob); });
+      ANGLES.forEach(function (angle) {
+        if (state.references[angle]) zip.file(StickerCharacter.REFERENCE_PATHS[angle], state.references[angle].blob);
+      });
       var archive = await zip.generateAsync({ type: "blob", compression: "DEFLATE", compressionOptions: { level: 6 } });
       downloadBlob(archive, safeName(els.characterName.value) + ".hd-character.zip");
       showSuccess("角色檔已下載。檔案包含原始參考內容，請妥善保管。");
@@ -714,9 +742,11 @@
       var manifest;
       try { manifest = JSON.parse(manifestText); } catch (error) { throw new Error("manifest.json 不是有效 JSON。"); }
       StickerCharacter.validateManifest(manifest);
+      StickerCharacter.validateArchiveMetadata(actualSizes, file.size, manifest);
       var decodedReferences = {};
-      for (var i = 0; i < ANGLES.length; i += 1) {
-        var angle = ANGLES[i];
+      var referenceAngles = Object.keys(manifest.references);
+      for (var i = 0; i < referenceAngles.length; i += 1) {
+        var angle = referenceAngles[i];
         decodedReferences[angle] = await decodeArchiveImage(archiveBytes[manifest.references[angle]], manifest.references[angle]);
       }
       var decodedCharacter = await decodeArchiveImage(archiveBytes[manifest.character_image], manifest.character_image);
@@ -724,7 +754,9 @@
       ANGLES.forEach(function (angle) {
         releaseReference(angle);
         var decoded = decodedReferences[angle];
-        state.references[angle] = { name: angle + ".png", blob: decoded.blob, width: decoded.width, height: decoded.height, url: URL.createObjectURL(decoded.blob) };
+        if (decoded) {
+          state.references[angle] = { name: angle + ".png", blob: decoded.blob, width: decoded.width, height: decoded.height, url: URL.createObjectURL(decoded.blob) };
+        }
         syncReferenceCard(angle);
       });
       state.workflow = "project";

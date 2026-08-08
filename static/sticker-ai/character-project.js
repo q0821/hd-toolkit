@@ -127,15 +127,55 @@
     throw new Error("未知的使用方式。");
   }
 
-  function validateArchiveMetadata(fileSizes, compressedBytes) {
+  function normalizeReferenceAngles(value) {
+    var seen = {};
+    if (!Array.isArray(value)) return [];
+    return value.filter(function (angle) {
+      if (!REFERENCE_PATHS[angle] || seen[angle]) return false;
+      seen[angle] = true;
+      return true;
+    });
+  }
+
+  function referenceCompleteness(referenceAngles) {
+    var angles = normalizeReferenceAngles(referenceAngles);
+    var ready = angles.indexOf("front") >= 0;
+    if (!ready) {
+      return { count: angles.length, ready: false, level: "missing", label: "請先上傳主要／正面照片" };
+    }
+    if (angles.length === 1) {
+      return { count: 1, ready: true, level: "base", label: "基礎一致性" };
+    }
+    if (angles.length === Object.keys(REFERENCE_PATHS).length) {
+      return { count: angles.length, ready: true, level: "best", label: "最佳一致性" };
+    }
+    return { count: angles.length, ready: true, level: "better", label: "較佳一致性" };
+  }
+
+  function validateArchiveMetadata(fileSizes, compressedBytes, manifest) {
     if (!Number.isFinite(compressedBytes) || compressedBytes < 0 || compressedBytes > ARCHIVE_LIMITS.compressedBytes) {
       throw new Error("角色檔不可超過 40 MB。");
     }
     if (!isPlainObject(fileSizes)) throw new Error("角色檔內容格式錯誤。");
     var actual = Object.keys(fileSizes).sort();
-    var expected = ARCHIVE_ENTRIES.slice().sort();
-    if (actual.length !== expected.length || actual.some(function (name, index) { return name !== expected[index]; })) {
-      throw new Error("角色檔內容不完整或包含不支援的檔案。");
+    var allowed = ARCHIVE_ENTRIES.slice().sort();
+    if (actual.some(function (name) { return allowed.indexOf(name) < 0; })) {
+      throw new Error("角色檔包含不支援的檔案。");
+    }
+    if (actual.indexOf("manifest.json") < 0 || actual.indexOf("character.png") < 0) {
+      throw new Error("角色檔內容不完整。");
+    }
+    if (actual.indexOf(REFERENCE_PATHS.front) < 0) {
+      throw new Error("角色檔缺少主要／正面參考圖。");
+    }
+    if (manifest) {
+      validateManifest(manifest);
+      var expected = ["manifest.json", manifest.character_image]
+        .concat(Object.keys(manifest.references).map(function (angle) { return manifest.references[angle]; }))
+        .sort();
+      if (actual.length !== expected.length || actual.some(function (name, index) { return name !== expected[index]; })) {
+        throw new Error("角色檔內容與 manifest 不一致。");
+      }
     }
     var total = 0;
     actual.forEach(function (name) {
@@ -154,6 +194,10 @@
 
   function createManifest(project) {
     project = project || {};
+    var references = {};
+    normalizeReferenceAngles(project.referenceAngles).forEach(function (angle) {
+      references[angle] = REFERENCE_PATHS[angle];
+    });
     return {
       schema_version: SCHEMA_VERSION,
       provider: String(project.provider == null ? "" : project.provider).trim(),
@@ -164,7 +208,7 @@
       fixed_traits: String(project.fixedTraits == null ? "" : project.fixedTraits).trim(),
       fixed_accessories: String(project.fixedAccessories == null ? "" : project.fixedAccessories).trim(),
       default_outfit: String(project.defaultOutfit == null ? "" : project.defaultOutfit).trim(),
-      references: Object.assign({}, REFERENCE_PATHS),
+      references: references,
       character_image: "character.png",
     };
   }
@@ -190,13 +234,16 @@
       throw new Error("角色檔缺少角色定稿圖。");
     }
     if (!isPlainObject(manifest.references)) {
-      throw new Error("角色檔必須包含五張參考圖。");
+      throw new Error("角色檔缺少主要／正面參考圖。");
     }
-    var keys = Object.keys(REFERENCE_PATHS);
-    if (Object.keys(manifest.references).length !== keys.length || keys.some(function (key) {
-      return manifest.references[key] !== REFERENCE_PATHS[key];
+    var keys = Object.keys(manifest.references);
+    if (manifest.references.front !== REFERENCE_PATHS.front) {
+      throw new Error("角色檔缺少主要／正面參考圖。");
+    }
+    if (keys.some(function (key) {
+      return !REFERENCE_PATHS[key] || manifest.references[key] !== REFERENCE_PATHS[key];
     })) {
-      throw new Error("角色檔必須包含五張參考圖。");
+      throw new Error("角色檔包含不支援的參考圖。");
     }
     return manifest;
   }
@@ -219,6 +266,7 @@
     evenUp: evenUp,
     nextFinalizationStatus: nextFinalizationStatus,
     referencePlan: referencePlan,
+    referenceCompleteness: referenceCompleteness,
     createManifest: createManifest,
     validateManifest: validateManifest,
     validateArchiveMetadata: validateArchiveMetadata,

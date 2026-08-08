@@ -13,6 +13,7 @@ function validProject(overrides) {
     fixedTraits: "圓臉、黑色短髮、紅框眼鏡",
     fixedAccessories: "紅框眼鏡",
     defaultOutfit: "米白色帽 T",
+    referenceAngles: ["front", "top", "bottom", "left", "right"],
   }, overrides || {});
 }
 
@@ -106,6 +107,37 @@ test("reference plan keeps normal project calls cheap and strict retry explicit"
     ["character", "front", "top", "bottom", "left", "right"]
   );
 });
+
+test("reference completeness requires front and grades one through five photos", () => {
+  assert.deepEqual(Character.referenceCompleteness([]), {
+    count: 0,
+    ready: false,
+    level: "missing",
+    label: "請先上傳主要／正面照片",
+  });
+  assert.deepEqual(Character.referenceCompleteness(["front"]), {
+    count: 1,
+    ready: true,
+    level: "base",
+    label: "基礎一致性",
+  });
+  assert.equal(Character.referenceCompleteness(["front", "left"]).level, "better");
+  assert.equal(Character.referenceCompleteness(["front", "top", "bottom", "left"]).level, "better");
+  assert.equal(Character.referenceCompleteness(["front", "top", "bottom", "left", "right"]).level, "best");
+  assert.equal(Character.referenceCompleteness(["left", "right"]).ready, false);
+});
+
+test("createManifest records only the reference photos that exist", () => {
+  const manifest = Character.createManifest(validProject({
+    referenceAngles: ["front", "left"],
+  }));
+
+  assert.deepEqual(manifest.references, {
+    front: "references/front.png",
+    left: "references/left.png",
+  });
+  assert.doesNotThrow(() => Character.validateManifest(manifest));
+});
 test("createManifest produces the versioned character contract", () => {
   const manifest = Character.createManifest(validProject());
 
@@ -130,13 +162,18 @@ test("validateManifest rejects unsupported versions", () => {
   assert.throws(() => Character.validateManifest(manifest), /不支援的角色檔版本/);
 });
 
-test("validateManifest rejects unknown providers and incomplete references", () => {
+test("validateManifest requires front and rejects unknown reference names", () => {
   const badProvider = Character.createManifest(validProject({ provider: "other" }));
   assert.throws(() => Character.validateManifest(badProvider), /AI 供應商/);
 
-  const missingReference = Character.createManifest(validProject());
-  delete missingReference.references.left;
-  assert.throws(() => Character.validateManifest(missingReference), /五張參考圖/);
+  const missingFront = Character.createManifest(validProject({
+    referenceAngles: ["left"],
+  }));
+  assert.throws(() => Character.validateManifest(missingFront), /主要／正面參考圖/);
+
+  const unknownReference = Character.createManifest(validProject());
+  unknownReference.references.rear = "references/rear.png";
+  assert.throws(() => Character.validateManifest(unknownReference), /不支援的參考圖/);
 });
 
 test("validateManifest rejects an empty identity description", () => {
@@ -159,9 +196,13 @@ test("validateManifest accepts every style exposed by the page", () => {
   );
 });
 
-function validArchiveSizes() {
+function validArchiveSizes(referenceAngles) {
+  const entries = ["manifest.json", "character.png"].concat(
+    (referenceAngles || ["front", "top", "bottom", "left", "right"])
+      .map((angle) => Character.REFERENCE_PATHS[angle])
+  );
   return Object.fromEntries(
-    Character.ARCHIVE_ENTRIES.map((name) => [name, name === "manifest.json" ? 1024 : 2048])
+    entries.map((name) => [name, name === "manifest.json" ? 1024 : 2048])
   );
 }
 
@@ -184,4 +225,27 @@ test("archive metadata validator enforces file whitelist and size limits", () =>
   const expanded = validArchiveSizes();
   expanded["character.png"] = 50 * 1024 * 1024;
   assert.throws(() => Character.validateArchiveMetadata(expanded, 4096), /解壓後/);
+});
+
+test("archive metadata accepts optional angles but still requires front", () => {
+  assert.doesNotThrow(
+    () => Character.validateArchiveMetadata(validArchiveSizes(["front"]), 4096)
+  );
+  assert.doesNotThrow(
+    () => Character.validateArchiveMetadata(validArchiveSizes(["front", "left"]), 4096)
+  );
+  assert.throws(
+    () => Character.validateArchiveMetadata(validArchiveSizes(["left"]), 4096),
+    /主要／正面參考圖/
+  );
+});
+
+test("archive metadata must match the references declared by the manifest", () => {
+  const manifest = Character.createManifest(validProject());
+  manifest.references = { front: Character.REFERENCE_PATHS.front };
+
+  assert.throws(
+    () => Character.validateArchiveMetadata(validArchiveSizes(), 4096, manifest),
+    /與 manifest 不一致/
+  );
 });
