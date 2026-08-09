@@ -42,6 +42,16 @@ def test_sticker_page_exposes_quick_and_character_project_modes():
     assert 'data-angle="extra1"' in body
     assert 'data-angle="extra5"' in body
 
+def test_sticker_page_keeps_controls_and_preview_in_two_column_layout():
+    body = _page()
+    controls_start = body.index('<div class="tool-layout__controls">')
+    workflow_start = body.index('id="workflowSeg"')
+    preview_marker = body.index('<!-- ===== 右：結果 ===== -->')
+    preview_start = body.index('<div class="tool-layout__preview"', preview_marker)
+    script_start = body.index('<script src="/static/shared/chroma-key.js">')
+    assert controls_start < workflow_start < preview_marker < preview_start
+    assert body[:script_start].rstrip().endswith("</div>\n      </div>")
+
 
 def test_sticker_page_exposes_ai_and_no_text_modes():
     body = _page()
