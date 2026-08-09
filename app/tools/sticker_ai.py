@@ -26,7 +26,7 @@ GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta/models/"
 
 _TIMEOUT = httpx.Timeout(180.0, connect=20.0)
 
-MAX_REFERENCES = 6
+MAX_REFERENCES = 11
 MAX_IMAGE_BYTES = 10 * 1024 * 1024
 MAX_TOTAL_IMAGE_BYTES = 40 * 1024 * 1024
 MAX_IMAGE_EDGE = 4096
@@ -121,7 +121,7 @@ def _validate_reference_image(data: bytes) -> tuple[str, int, int]:
 
 async def _read_references(files: list[UploadFile]) -> list[ReferenceImage]:
     if len(files) > MAX_REFERENCES:
-        raise HTTPException(status_code=400, detail="一次最多 6 張參考圖。")
+        raise HTTPException(status_code=400, detail="一次最多 11 張參考圖（含畫風參考圖）。")
 
     references: list[ReferenceImage] = []
     total_bytes = 0

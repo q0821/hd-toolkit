@@ -99,16 +99,17 @@ test("identity changes invalidate an approved finalization", () => {
 test("reference plan keeps normal project calls cheap and strict retry explicit", () => {
   assert.deepEqual(
     Character.referencePlan("quick", false),
-    ["front", "top", "bottom", "left", "right"]
+    ["front", "top", "bottom", "left", "right", "extra1", "extra2", "extra3", "extra4", "extra5"]
   );
   assert.deepEqual(Character.referencePlan("project", false), ["character"]);
   assert.deepEqual(
     Character.referencePlan("project", true),
-    ["character", "front", "top", "bottom", "left", "right"]
+    ["character", "front", "top", "bottom", "left", "right", "extra1", "extra2", "extra3", "extra4", "extra5"]
   );
 });
 
-test("reference completeness requires front and grades one through five photos", () => {
+
+test("reference completeness requires front and grades one through ten photos", () => {
   assert.deepEqual(Character.referenceCompleteness([]), {
     count: 0,
     ready: false,
@@ -123,7 +124,7 @@ test("reference completeness requires front and grades one through five photos",
   });
   assert.equal(Character.referenceCompleteness(["front", "left"]).level, "better");
   assert.equal(Character.referenceCompleteness(["front", "top", "bottom", "left"]).level, "better");
-  assert.equal(Character.referenceCompleteness(["front", "top", "bottom", "left", "right"]).level, "best");
+  assert.equal(Character.referenceCompleteness(["front", "top", "bottom", "left", "right", "extra1", "extra2", "extra3", "extra4", "extra5"]).level, "best");
   assert.equal(Character.referenceCompleteness(["left", "right"]).ready, false);
 });
 
@@ -153,6 +154,15 @@ test("createManifest produces the versioned character contract", () => {
   });
   assert.equal(manifest.character_image, "character.png");
   assert.equal(JSON.stringify(manifest).includes("api_key"), false);
+});
+test("createManifest and archive metadata preserve all ten role references", () => {
+  const referenceAngles = ["front", "top", "bottom", "left", "right", "extra1", "extra2", "extra3", "extra4", "extra5"];
+  const manifest = Character.createManifest(validProject({ referenceAngles }));
+  const sizes = validArchiveSizes(referenceAngles);
+
+  assert.equal(Object.keys(manifest.references).length, 10);
+  assert.doesNotThrow(() => Character.validateManifest(manifest));
+  assert.doesNotThrow(() => Character.validateArchiveMetadata(sizes, 4096, manifest));
 });
 
 test("validateManifest rejects unsupported versions", () => {
@@ -248,4 +258,24 @@ test("archive metadata must match the references declared by the manifest", () =
     () => Character.validateArchiveMetadata(validArchiveSizes(), 4096, manifest),
     /與 manifest 不一致/
   );
+});
+test("style reference catalog exposes visual previews for every style", () => {
+  Character.STYLES.forEach((style) => {
+    assert.match(Character.styleReferenceSvg(style), /^<svg\b/);
+    assert.match(Character.styleReferenceSvg(style), /viewBox=/);
+  });
+});
+
+test("custom style references are preserved in character manifests", () => {
+  const manifest = Character.createManifest(validProject({
+    customStyleReference: true,
+    referenceAngles: ["front"],
+  }));
+
+  assert.equal(manifest.style_reference, "references/style.png");
+  assert.doesNotThrow(() => Character.validateManifest(manifest));
+
+  const sizes = validArchiveSizes(["front"]);
+  sizes["references/style.png"] = 2048;
+  assert.doesNotThrow(() => Character.validateArchiveMetadata(sizes, 6144, manifest));
 });

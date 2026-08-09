@@ -30,16 +30,25 @@ def _files(count: int, data: bytes = PNG_1X1, content_type: str = "image/png"):
         for index in range(count)
     ]
 
-
-def test_generate_rejects_more_than_six_references(monkeypatch):
+def test_generate_accepts_eleven_input_references(monkeypatch):
     async def fake_openai(*args, **kwargs):
         return PNG_1X1
 
     monkeypatch.setattr(sticker_ai, "_call_openai", fake_openai)
-    response = client.post("/api/sticker-ai/generate", data=FORM, files=_files(7))
+    response = client.post("/api/sticker-ai/generate", data=FORM, files=_files(11))
+
+    assert response.status_code == 200
+
+
+def test_generate_rejects_more_than_eleven_references_including_style(monkeypatch):
+    async def fake_openai(*args, **kwargs):
+        return PNG_1X1
+
+    monkeypatch.setattr(sticker_ai, "_call_openai", fake_openai)
+    response = client.post("/api/sticker-ai/generate", data=FORM, files=_files(12))
 
     assert response.status_code == 400
-    assert "最多 6 張" in response.json()["detail"]
+    assert "最多 11 張參考圖" in response.json()["detail"]
 
 
 def test_generate_rejects_non_image_reference(monkeypatch):

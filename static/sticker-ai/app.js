@@ -10,8 +10,19 @@
   var TAB_H = 74;
   var MAX_REFERENCE_BYTES = 10 * 1024 * 1024;
   var PROMPT_VERSION = StickerCharacter.CURRENT_PROMPT_VERSION;
-  var ANGLES = ["front", "top", "bottom", "left", "right"];
-  var ANGLE_NAMES = { front: "正面", top: "上方視角", bottom: "下方視角", left: "左側", right: "右側" };
+  var ANGLES = ["front", "top", "bottom", "left", "right", "extra1", "extra2", "extra3", "extra4", "extra5"];
+  var ANGLE_NAMES = {
+    front: "正面",
+    top: "上方視角",
+    bottom: "下方視角",
+    left: "左側",
+    right: "右側",
+    extra1: "補充參考 1",
+    extra2: "補充參考 2",
+    extra3: "補充參考 3",
+    extra4: "補充參考 4",
+    extra5: "補充參考 5",
+  };
   var TEXT_STYLES = {
     handwritten: "自然手寫字，筆畫有活力但清楚可讀",
     rounded: "可愛圓體字，圓潤、飽滿、清楚可讀",
@@ -24,6 +35,7 @@
     provider: "openai",
     style: "sticker",
     styleExtra: "",
+    styleReference: { custom: false, blob: null, url: "", name: "" },
     entries: [{ title: "", desc: "" }],
     titleMode: "ai",
     textStyle: "handwritten",
@@ -36,6 +48,7 @@
     outputs: [],
     busy: false,
   };
+  var builtinStyleReferenceCache = {};
 
   var $ = function (id) { return document.getElementById(id); };
   var els = {
@@ -49,6 +62,9 @@
     characterPreviewImage: $("characterPreviewImage"), characterStatus: $("characterStatus"),
     entries: $("entries"), bulkEntries: $("bulkEntries"), bulkApplyBtn: $("bulkApplyBtn"),
     addEntryBtn: $("addEntryBtn"), styleSeg: $("styleSeg"), styleExtra: $("styleExtra"),
+    styleReferenceInput: $("styleReferenceInput"), styleReferencePickBtn: $("styleReferencePickBtn"),
+    styleReferencePreview: $("styleReferencePreview"), styleReferenceName: $("styleReferenceName"),
+    styleReferenceRemoveBtn: $("styleReferenceRemoveBtn"), styleReferenceStatus: $("styleReferenceStatus"),
     providerSeg: $("providerSeg"), paneOpenai: $("paneOpenai"), paneGoogle: $("paneGoogle"),
     openaiModel: $("openaiModel"), openaiModelCustom: $("openaiModelCustom"), openaiQuality: $("openaiQuality"),
     googleModel: $("googleModel"), googleModelCustom: $("googleModelCustom"), planNote: $("planNote"),
@@ -72,11 +88,9 @@
     }
     return els.googleModel.value === "__custom__" ? (els.googleModelCustom.value.trim() || "gemini-2.5-flash-image") : els.googleModel.value;
   }
-
   function availableReferenceAngles() {
     return ANGLES.filter(function (angle) { return !!state.references[angle]; });
   }
-
   function syncReferenceCompleteness(summary) {
     summary = summary || StickerCharacter.referenceCompleteness(availableReferenceAngles());
     if (!summary.ready) {
@@ -87,8 +101,8 @@
       ? "可以建立角色；加入其他角度可提高一致性。"
       : summary.level === "better"
         ? "可以建立角色；繼續加入角度可提高一致性。"
-        : "五個角度都已提供。";
-    els.referenceCompleteness.textContent = "參考完整度：" + summary.label + "（" + summary.count + "/5）。" + guidance;
+        : "十張參考圖都已提供。";
+    els.referenceCompleteness.textContent = "參考完整度：" + summary.label + "（" + summary.count + "/10）。" + guidance;
   }
 
   function showError(message) {
@@ -160,6 +174,83 @@
     canvas.getContext("2d").drawImage(image, 0, 0, width, height);
     return { blob: await canvasToBlob(canvas), width: width, height: height };
   }
+  function syncStyleCards() {
+    els.styleSeg.querySelectorAll("[data-style]").forEach(function (button) {
+      var style = button.dataset.style;
+      var preview = button.querySelector("[data-style-preview]");
+      if (preview) preview.src = StickerCharacter.styleReferenceDataUrl(style);
+      button.setAttribute("aria-pressed", String(style === state.style));
+    });
+  }
+
+  async function builtinStyleReference(style) {
+    if (builtinStyleReferenceCache[style]) return builtinStyleReferenceCache[style];
+    var image = await loadImage(StickerCharacter.styleReferenceDataUrl(style));
+    var canvas = document.createElement("canvas");
+    canvas.width = image.naturalWidth;
+    canvas.height = image.naturalHeight;
+    canvas.getContext("2d").drawImage(image, 0, 0);
+    var normalized = {
+      blob: await canvasToBlob(canvas),
+      width: canvas.width,
+      height: canvas.height,
+      name: "style-" + style + ".png",
+    };
+    builtinStyleReferenceCache[style] = normalized;
+    return normalized;
+  }
+
+  function releaseStyleReference() {
+    if (state.styleReference.url) URL.revokeObjectURL(state.styleReference.url);
+    state.styleReference = { custom: false, blob: null, url: "", name: "" };
+  }
+
+  function syncStyleReference() {
+    if (state.styleReference.custom) {
+      els.styleReferencePreview.src = state.styleReference.url;
+      els.styleReferencePreview.hidden = false;
+      els.styleReferenceName.textContent = state.styleReference.name;
+      els.styleReferenceRemoveBtn.hidden = false;
+      els.styleReferencePickBtn.textContent = "更換畫風參考圖";
+      els.styleReferenceStatus.textContent = "已使用自訂畫風參考圖，會優先於內建畫風範例。";
+      return;
+    }
+    els.styleReferencePreview.removeAttribute("src");
+    els.styleReferencePreview.hidden = true;
+    els.styleReferenceName.textContent = "";
+    els.styleReferenceRemoveBtn.hidden = true;
+    els.styleReferencePickBtn.textContent = "上傳畫風參考圖";
+    els.styleReferenceStatus.textContent = "可上傳一張你喜歡的插畫或貼圖，AI 只參考它的線條、色彩與筆觸。";
+  }
+
+  async function setStyleReference(file) {
+    try {
+      var normalized = await normalizeImage(file);
+      releaseStyleReference();
+      state.styleReference = {
+        custom: true,
+        blob: normalized.blob,
+        url: URL.createObjectURL(normalized.blob),
+        name: file.name || "style-reference.png",
+        width: normalized.width,
+        height: normalized.height,
+      };
+      syncStyleReference();
+      invalidateCharacter("styleReference");
+      syncControls();
+    } catch (error) {
+      showError(error.message || "畫風參考圖讀取失敗。");
+    }
+  }
+
+  async function requestStyleReference() {
+    if (state.styleReference.custom) {
+      return { name: "style-reference.png", blob: state.styleReference.blob };
+    }
+    var builtin = await builtinStyleReference(state.style);
+    return { name: "style-reference.png", blob: builtin.blob };
+  }
+
 
   function releaseReference(angle) {
     var current = state.references[angle];
@@ -336,8 +427,14 @@
     els.generateCharacterBtn.textContent = !projectReferenceReady ? "先上傳主要／正面照片" : state.busy ? "產生中…" : "產生角色定稿圖";
     els.importCharacterBtn.disabled = state.busy;
     els.referenceSlots.querySelectorAll("button,input").forEach(function (control) { control.disabled = state.busy; });
+    els.styleSeg.querySelectorAll("button").forEach(function (button) { button.disabled = state.busy; });
+    [els.styleReferenceInput, els.styleReferencePickBtn, els.styleReferenceRemoveBtn].forEach(function (control) {
+      if (control) control.disabled = state.busy;
+    });
     els.providerSeg.querySelectorAll("button").forEach(function (button) { button.disabled = state.busy; });
     els.workflowSeg.querySelectorAll("button").forEach(function (button) { button.disabled = state.busy; });
+    syncStyleCards();
+    syncStyleReference();
     syncReferenceCompleteness(referenceSummary);
     syncCharacterStatus();
   }
@@ -362,6 +459,12 @@
     return list;
   }
 
+  async function requestReferences(forCharacter, strict) {
+    var references = referenceBlobs(forCharacter, strict);
+    references.push(await requestStyleReference());
+    return references;
+  }
+
   function characterIdentityPrompt() {
     var angles = availableReferenceAngles();
     var parts = [
@@ -375,10 +478,10 @@
     if (els.defaultOutfit.value.trim()) parts.push("Default outfit: " + els.defaultOutfit.value.trim() + ".");
     return parts.join(" ");
   }
-
   function buildCharacterPrompt() {
-    var style = state.style + (state.styleExtra ? ", " + state.styleExtra : "");
-    return characterIdentityPrompt() + " Create one polished full-body character reference image on a clean white background. Neutral standing pose, face and outfit fully visible, no text, no letters, no symbols. Illustration style: " + style + ". This image will be the canonical identity reference for later sticker generation.";
+    var style = StickerCharacter.STYLE_HINTS[state.style] || state.style;
+    if (state.styleExtra) style += ", " + state.styleExtra;
+    return characterIdentityPrompt() + " Create one polished full-body character reference image on a clean white background. Neutral standing pose, face and outfit fully visible, no text, no letters, no symbols. The final input image is the visual style reference. Use only its line quality, colors, brushwork and rendering approach; do not copy its subject, objects, text or composition. Illustration style: " + style + ". This image will be the canonical identity reference for later sticker generation.";
   }
 
   function buildStickerPrompt(entry, strict) {
@@ -398,8 +501,9 @@
       prompt.push("Fixed traits: " + els.fixedTraits.value.trim() + ".");
       if (els.fixedAccessories.value.trim()) prompt.push("Fixed accessories: " + els.fixedAccessories.value.trim() + ".");
     } else if (references.length) {
-      prompt.push("Use every input image as a reference for the same character. Preserve identity, face, hairstyle, body proportions, skin tone, clothing and accessories consistently.");
+      prompt.push("Use every input image before the final style reference as evidence for the same character. Preserve identity, face, hairstyle, body proportions, skin tone, clothing and accessories consistently.");
     }
+    prompt.push("The final input image is the visual style reference. Use only its line quality, colors, brushwork and rendering approach; do not copy its subject, objects, text or composition.");
     prompt.push(styleMap[state.style] || styleMap.sticker);
     if (state.styleExtra) prompt.push("Additional style direction: " + state.styleExtra + ".");
     if (els.defaultOutfit.value.trim() && state.workflow === "project") prompt.push("Default outfit: " + els.defaultOutfit.value.trim() + ".");
@@ -471,9 +575,10 @@
   }
 
   async function generateOne(entry, index, strict) {
+    var references = await requestReferences(false, strict);
     var raw = await generateRaw(
       buildStickerPrompt(entry, strict),
-      referenceBlobs(false, strict),
+      references,
       false
     );
     var maxWidth = state.size === "square" ? SQUARE : ST_MAX_W;
@@ -635,7 +740,7 @@
     setProgress(0, 1, "產生角色定稿圖");
     syncControls();
     try {
-      var blob = await generateRaw(buildCharacterPrompt(), referenceBlobs(true), true);
+      var blob = await generateRaw(buildCharacterPrompt(), await requestReferences(true, false), true);
       setCharacterBlob(blob, "review", false);
       setProgress(1, 1, "待確認");
       showSuccess("角色定稿圖已產生。本次使用 " + availableReferenceAngles().length + " 張參考圖，請確認角色外觀後按「確認角色」。");
@@ -662,6 +767,7 @@
       promptVersion: state.promptVersion,
       style: state.style,
       styleExtra: state.styleExtra,
+      customStyleReference: state.styleReference.custom,
       fixedTraits: els.fixedTraits.value,
       fixedAccessories: els.fixedAccessories.value,
       defaultOutfit: els.defaultOutfit.value,
@@ -686,12 +792,14 @@
     try {
       var manifest = StickerCharacter.createManifest(currentProject());
       StickerCharacter.validateManifest(manifest);
+      var styleReference = state.styleReference.custom ? await requestStyleReference() : null;
       var zip = new JSZip();
       zip.file("manifest.json", JSON.stringify(manifest, null, 2));
       zip.file("character.png", state.character.blob);
       ANGLES.forEach(function (angle) {
         if (state.references[angle]) zip.file(StickerCharacter.REFERENCE_PATHS[angle], state.references[angle].blob);
       });
+      if (styleReference) zip.file(manifest.style_reference, styleReference.blob);
       var archive = await zip.generateAsync({ type: "blob", compression: "DEFLATE", compressionOptions: { level: 6 } });
       downloadBlob(archive, safeName(els.characterName.value) + ".hd-character.zip");
       showSuccess("角色檔已下載。檔案包含原始參考內容，請妥善保管。");
@@ -749,8 +857,10 @@
         var angle = referenceAngles[i];
         decodedReferences[angle] = await decodeArchiveImage(archiveBytes[manifest.references[angle]], manifest.references[angle]);
       }
+      var decodedStyleReference = manifest.style_reference
+        ? await decodeArchiveImage(archiveBytes[manifest.style_reference], manifest.style_reference)
+        : null;
       var decodedCharacter = await decodeArchiveImage(archiveBytes[manifest.character_image], manifest.character_image);
-
       ANGLES.forEach(function (angle) {
         releaseReference(angle);
         var decoded = decodedReferences[angle];
@@ -759,6 +869,17 @@
         }
         syncReferenceCard(angle);
       });
+      releaseStyleReference();
+      if (decodedStyleReference) {
+        state.styleReference = {
+          custom: true,
+          blob: decodedStyleReference.blob,
+          width: decodedStyleReference.width,
+          height: decodedStyleReference.height,
+          name: "style-reference.png",
+          url: URL.createObjectURL(decodedStyleReference.blob),
+        };
+      }
       state.workflow = "project";
       state.provider = manifest.provider;
       state.style = manifest.style;
@@ -874,12 +995,24 @@
 
   els.styleSeg.addEventListener("click", function (event) {
     var button = event.target.closest("[data-style]");
-    if (!button) return;
+    if (!button || state.busy) return;
     state.style = button.dataset.style;
-    setSegment(els.styleSeg, "style", state.style);
+    syncStyleCards();
     invalidateCharacter("style");
   });
   els.styleExtra.addEventListener("input", function () { state.styleExtra = els.styleExtra.value.trim(); invalidateCharacter("style"); });
+  els.styleReferencePickBtn.addEventListener("click", function () { if (!state.busy) els.styleReferenceInput.click(); });
+  els.styleReferenceInput.addEventListener("change", function () {
+    if (els.styleReferenceInput.files[0]) setStyleReference(els.styleReferenceInput.files[0]);
+    els.styleReferenceInput.value = "";
+  });
+  els.styleReferenceRemoveBtn.addEventListener("click", function () {
+    if (state.busy) return;
+    releaseStyleReference();
+    syncStyleReference();
+    invalidateCharacter("styleReference");
+    syncControls();
+  });
 
   els.titleSeg.addEventListener("click", function (event) {
     var button = event.target.closest("[data-title]");
@@ -959,6 +1092,7 @@
   if (window.Settings) Settings.onChange(syncControls);
   window.addEventListener("beforeunload", function () {
     ANGLES.forEach(releaseReference);
+    releaseStyleReference();
     releaseCharacter();
     clearOutputUrls();
   });

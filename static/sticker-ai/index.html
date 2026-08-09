@@ -87,6 +87,20 @@
     .character-panel { margin-top: var(--space-4); padding: var(--space-4); border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface-subtle); }
     .character-panel textarea { min-height: 72px; resize: vertical; }
     .character-actions { display: flex; gap: var(--space-2); flex-wrap: wrap; margin-top: var(--space-3); }
+    .style-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-2); margin-top: var(--space-3); }
+    .style-card { min-width: 0; padding: 0; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface); color: var(--text); cursor: pointer; overflow: hidden; text-align: left; }
+    .style-card:hover, .style-card:focus-visible { border-color: var(--accent); outline: 2px solid var(--accent); outline-offset: 1px; }
+    .style-card[aria-pressed="true"] { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); background: var(--accent-subtle); }
+    .style-card__preview { display: block; width: 100%; aspect-ratio: 4 / 3; object-fit: cover; background: var(--surface-subtle); }
+    .style-card__label { display: block; padding: 8px 9px 0; font-size: 13px; font-weight: 600; }
+    .style-card__hint { display: block; padding: 2px 9px 9px; font-size: 11px; line-height: 1.35; color: var(--text-dim); }
+    .style-reference { margin-top: var(--space-3); padding: var(--space-3); border: 1px dashed var(--border); border-radius: var(--radius-md); background: var(--surface-subtle); }
+    .style-reference__actions { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; margin-top: var(--space-2); }
+    .style-reference__preview { display: block; width: 120px; height: 90px; object-fit: cover; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface); }
+    .style-reference__name { min-width: 0; flex: 1 1 160px; font-family: var(--font-mono); font-size: 11px; color: var(--text-dim); overflow-wrap: anywhere; }
+    .style-reference__remove { padding: 5px 8px; font-size: 12px; }
+    .style-reference__status { margin-top: var(--space-2); }
+    @media (max-width: 520px) { .style-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
     .character-preview { display: grid; grid-template-columns: minmax(96px, 160px) 1fr; gap: var(--space-3); align-items: center; margin-top: var(--space-3); }
     .character-preview img { width: 100%; max-height: 180px; object-fit: contain; border: 1px solid var(--border); border-radius: var(--radius-sm); background: #fff; }
     .character-status { font-size: 12px; color: var(--text-muted); }
@@ -121,10 +135,6 @@
 
   <main class="app-main app-main--full">
     <div class="tool-layout">
-
-      <!-- ===== 左：控制 ===== -->
-      <div class="tool-layout__controls">
-
         <div class="section">
           <div class="section__label"><span class="section__num">01</span> 使用方式</div>
           <div class="segmented segmented--wrap" id="workflowSeg" role="group" aria-label="使用方式">
@@ -136,17 +146,29 @@
 
         <div class="section">
           <div class="section__label"><span class="section__num">02</span> 角色與貼圖風格</div>
-          <div class="segmented segmented--wrap" id="styleSeg" role="group" aria-label="角色與貼圖風格">
-            <button type="button" class="segmented__btn" data-style="sticker" aria-pressed="true">貼紙白邊</button>
-            <button type="button" class="segmented__btn" data-style="handdraw" aria-pressed="false">手繪</button>
-            <button type="button" class="segmented__btn" data-style="chibi" aria-pressed="false">Q版</button>
-            <button type="button" class="segmented__btn" data-style="watercolor" aria-pressed="false">水彩</button>
-            <button type="button" class="segmented__btn" data-style="lineart" aria-pressed="false">線稿</button>
-            <button type="button" class="segmented__btn" data-style="cartoon" aria-pressed="false">卡通</button>
+          <div class="style-grid" id="styleSeg" role="group" aria-label="角色與貼圖風格">
+            <button type="button" class="style-card" data-style="sticker" aria-pressed="true"><img class="style-card__preview" data-style-preview="sticker" alt="貼圖白邊畫風範例"><span class="style-card__label">貼圖白邊</span><span class="style-card__hint">粗線條、白色外框</span></button>
+            <button type="button" class="style-card" data-style="handdraw" aria-pressed="false"><img class="style-card__preview" data-style-preview="handdraw" alt="手繪畫風範例"><span class="style-card__label">手繪</span><span class="style-card__hint">有手感的自然筆觸</span></button>
+            <button type="button" class="style-card" data-style="chibi" aria-pressed="false"><img class="style-card__preview" data-style-preview="chibi" alt="Q 版畫風範例"><span class="style-card__label">Q 版</span><span class="style-card__hint">大頭、小身體</span></button>
+            <button type="button" class="style-card" data-style="watercolor" aria-pressed="false"><img class="style-card__preview" data-style-preview="watercolor" alt="水彩畫風範例"><span class="style-card__label">水彩</span><span class="style-card__hint">柔和暈染、透明色彩</span></button>
+            <button type="button" class="style-card" data-style="lineart" aria-pressed="false"><img class="style-card__preview" data-style-preview="lineart" alt="線稿畫風範例"><span class="style-card__label">線稿</span><span class="style-card__hint">簡潔線條、少量上色</span></button>
+            <button type="button" class="style-card" data-style="cartoon" aria-pressed="false"><img class="style-card__preview" data-style-preview="cartoon" alt="卡通畫風範例"><span class="style-card__label">卡通</span><span class="style-card__hint">明亮色彩、俐落造型</span></button>
           </div>
-          <input type="text" class="text-field mt-4" id="styleExtra" autocomplete="off" placeholder="額外風格描述（可選），例如：暖色調、粗線條、像素風…">
-          <p class="hint-line">這裡的風格會同時套用於角色定稿圖與後續貼圖。請先選好，再產生角色定稿圖。</p>
+          <div class="style-reference">
+            <label class="field-label" for="styleReferenceInput">自訂畫風參考圖（選填）</label>
+            <div class="style-reference__actions">
+              <input type="file" id="styleReferenceInput" accept="image/png,image/jpeg,image/webp" hidden>
+              <button type="button" class="btn btn--ghost" id="styleReferencePickBtn">上傳畫風參考圖</button>
+              <img class="style-reference__preview" id="styleReferencePreview" alt="自訂畫風參考圖預覽" hidden>
+              <span class="style-reference__name" id="styleReferenceName"></span>
+              <button type="button" class="btn btn--ghost style-reference__remove" id="styleReferenceRemoveBtn" hidden>移除</button>
+            </div>
+            <p class="hint-line style-reference__status" id="styleReferenceStatus">可上傳一張你喜歡的插畫或貼圖，AI 只參考它的線條、色彩與筆觸。</p>
+          </div>
+          <input type="text" class="text-field mt-4" id="styleExtra" autocomplete="off" placeholder="補充畫風描述（進階，可選），例如：白色外框、顏色明亮、陰影少一點">
+          <p class="hint-line">畫風會同時套用於角色定稿圖與後續貼圖。角色參考圖決定「這是誰」，畫風參考圖決定「要怎麼畫」。</p>
         </div>
+
         <div class="section">
           <div class="section__label"><span class="section__num">03</span> 角色參考圖</div>
           <div class="reference-grid" id="referenceSlots">
@@ -155,8 +177,13 @@
             <div class="reference-card" data-angle="bottom"><input type="file" id="referenceBottom" data-angle-input="bottom" accept="image/png,image/jpeg,image/webp" hidden><button type="button" class="reference-card__pick" data-angle-pick="bottom"><span class="reference-card__label">下方視角（選填）</span><span class="reference-card__hint">從角色下方往上拍</span></button><img class="reference-card__preview" data-angle-preview="bottom" alt="下方視角參考圖預覽" hidden><span class="reference-card__meta" data-angle-meta="bottom"></span><button type="button" class="btn btn--ghost reference-card__remove" data-angle-remove="bottom" aria-label="移除下方視角參考圖" hidden>移除</button></div>
             <div class="reference-card" data-angle="left"><input type="file" id="referenceLeft" data-angle-input="left" accept="image/png,image/jpeg,image/webp" hidden><button type="button" class="reference-card__pick" data-angle-pick="left"><span class="reference-card__label">左側（選填）</span><span class="reference-card__hint">角色左側輪廓</span></button><img class="reference-card__preview" data-angle-preview="left" alt="左側參考圖預覽" hidden><span class="reference-card__meta" data-angle-meta="left"></span><button type="button" class="btn btn--ghost reference-card__remove" data-angle-remove="left" aria-label="移除左側參考圖" hidden>移除</button></div>
             <div class="reference-card" data-angle="right"><input type="file" id="referenceRight" data-angle-input="right" accept="image/png,image/jpeg,image/webp" hidden><button type="button" class="reference-card__pick" data-angle-pick="right"><span class="reference-card__label">右側（選填）</span><span class="reference-card__hint">角色右側輪廓</span></button><img class="reference-card__preview" data-angle-preview="right" alt="右側參考圖預覽" hidden><span class="reference-card__meta" data-angle-meta="right"></span><button type="button" class="btn btn--ghost reference-card__remove" data-angle-remove="right" aria-label="移除右側參考圖" hidden>移除</button></div>
+            <div class="reference-card" data-angle="extra1"><input type="file" id="referenceExtra1" data-angle-input="extra1" accept="image/png,image/jpeg,image/webp" hidden><button type="button" class="reference-card__pick" data-angle-pick="extra1"><span class="reference-card__label">補充參考 1（選填）</span><span class="reference-card__hint">可再加入任意角度</span></button><img class="reference-card__preview" data-angle-preview="extra1" alt="補充參考圖 1 預覽" hidden><span class="reference-card__meta" data-angle-meta="extra1"></span><button type="button" class="btn btn--ghost reference-card__remove" data-angle-remove="extra1" aria-label="移除補充參考圖 1" hidden>移除</button></div>
+            <div class="reference-card" data-angle="extra2"><input type="file" id="referenceExtra2" data-angle-input="extra2" accept="image/png,image/jpeg,image/webp" hidden><button type="button" class="reference-card__pick" data-angle-pick="extra2"><span class="reference-card__label">補充參考 2（選填）</span><span class="reference-card__hint">可再加入任意角度</span></button><img class="reference-card__preview" data-angle-preview="extra2" alt="補充參考圖 2 預覽" hidden><span class="reference-card__meta" data-angle-meta="extra2"></span><button type="button" class="btn btn--ghost reference-card__remove" data-angle-remove="extra2" aria-label="移除補充參考圖 2" hidden>移除</button></div>
+            <div class="reference-card" data-angle="extra3"><input type="file" id="referenceExtra3" data-angle-input="extra3" accept="image/png,image/jpeg,image/webp" hidden><button type="button" class="reference-card__pick" data-angle-pick="extra3"><span class="reference-card__label">補充參考 3（選填）</span><span class="reference-card__hint">可再加入任意角度</span></button><img class="reference-card__preview" data-angle-preview="extra3" alt="補充參考圖 3 預覽" hidden><span class="reference-card__meta" data-angle-meta="extra3"></span><button type="button" class="btn btn--ghost reference-card__remove" data-angle-remove="extra3" aria-label="移除補充參考圖 3" hidden>移除</button></div>
+            <div class="reference-card" data-angle="extra4"><input type="file" id="referenceExtra4" data-angle-input="extra4" accept="image/png,image/jpeg,image/webp" hidden><button type="button" class="reference-card__pick" data-angle-pick="extra4"><span class="reference-card__label">補充參考 4（選填）</span><span class="reference-card__hint">可再加入任意角度</span></button><img class="reference-card__preview" data-angle-preview="extra4" alt="補充參考圖 4 預覽" hidden><span class="reference-card__meta" data-angle-meta="extra4"></span><button type="button" class="btn btn--ghost reference-card__remove" data-angle-remove="extra4" aria-label="移除補充參考圖 4" hidden>移除</button></div>
+            <div class="reference-card" data-angle="extra5"><input type="file" id="referenceExtra5" data-angle-input="extra5" accept="image/png,image/jpeg,image/webp" hidden><button type="button" class="reference-card__pick" data-angle-pick="extra5"><span class="reference-card__label">補充參考 5（選填）</span><span class="reference-card__hint">可再加入任意角度</span></button><img class="reference-card__preview" data-angle-preview="extra5" alt="補充參考圖 5 預覽" hidden><span class="reference-card__meta" data-angle-meta="extra5"></span><button type="button" class="btn btn--ghost reference-card__remove" data-angle-remove="extra5" aria-label="移除補充參考圖 5" hidden>移除</button></div>
           </div>
-          <p class="hint-line">圖片只在目前瀏覽器工作階段使用；產生時會經本站薄代理傳給所選 AI 供應商。上傳後統一轉為最長邊 1024px 的 PNG。</p>
+          <p class="hint-line">最多可提供十張參考圖，角度欄位會依標籤送出；補充參考圖可放入其他角度。圖片只在目前瀏覽器工作階段使用；產生時會經本站薄代理傳給所選 AI 供應商。上傳後統一轉為最長邊 1024px 的 PNG。</p>
           <p class="hint-line" id="referenceCompleteness" role="status" aria-live="polite"></p>
 
           <div class="character-panel" id="characterFields" hidden>
@@ -335,13 +362,11 @@
         </div>
       </div>
 
-    </div>
-  </main>
 
   <script src="/static/shared/chroma-key.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
-  <script src="/static/sticker-ai/character-project.js?v=1.0.13"></script>
-  <script src="/static/sticker-ai/app.js?v=1.0.13"></script>
+  <script src="/static/sticker-ai/character-project.js?v=1.0.14"></script>
+  <script src="/static/sticker-ai/app.js?v=1.0.14"></script>
 
 </body>
 </html>

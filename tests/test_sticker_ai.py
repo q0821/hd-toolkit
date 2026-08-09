@@ -39,6 +39,8 @@ def test_sticker_page_exposes_quick_and_character_project_modes():
     assert 'data-angle="bottom"' in body
     assert 'data-angle="left"' in body
     assert 'data-angle="right"' in body
+    assert 'data-angle="extra1"' in body
+    assert 'data-angle="extra5"' in body
 
 
 def test_sticker_page_exposes_ai_and_no_text_modes():
@@ -64,10 +66,15 @@ def test_sticker_page_exposes_character_project_controls():
 
 def test_sticker_page_loads_character_project_module():
     body = _page()
-    assert (
-        '<script src="/static/sticker-ai/character-project.js?v=1.0.13"></script>'
-        in body
-    )
+    assert '<script src="/static/sticker-ai/character-project.js?v=1.0.14"></script>' in body
+
+def test_sticker_page_exposes_visual_style_reference_controls():
+    body = _page()
+    assert 'id="styleSeg"' in body
+    assert body.count('data-style="') == 6
+    assert 'class="style-card__preview"' in body
+    assert 'id="styleReferenceInput"' in body
+    assert "補充畫風描述（進階，可選）" in body
 
 
 def test_deprecated_models_are_not_recommended_in_error_guidance():
