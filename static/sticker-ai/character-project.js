@@ -29,38 +29,18 @@
     cartoon: "明亮色彩、俐落造型",
   };
   var STYLE_REFERENCE_PATH = "references/style.png";
-
-  function styleReferenceSvg(style) {
-    if (STYLES.indexOf(style) < 0) throw new Error("不支援的插畫風格。");
-    var specs = {
-      sticker: { background: "#f7efe2", body: "#e99b55", detail: "#2d241c", outline: "#2d241c", width: 9, opacity: 1 },
-      handdraw: { background: "#f2e7d8", body: "#d68f68", detail: "#49352d", outline: "#49352d", width: 6, opacity: 1 },
-      chibi: { background: "#edf3f5", body: "#f0a15d", detail: "#263747", outline: "#263747", width: 8, opacity: 1 },
-      watercolor: { background: "#eaf1e9", body: "#d99574", detail: "#35524a", outline: "#35524a", width: 4, opacity: 0.68 },
-      lineart: { background: "#faf9f5", body: "none", detail: "#282828", outline: "#282828", width: 5, opacity: 1 },
-      cartoon: { background: "#e8f1ff", body: "#ef6c4d", detail: "#172b4d", outline: "#172b4d", width: 7, opacity: 1 },
-    };
-    var spec = specs[style];
-    var head = "M 214 196 C 214 130 260 88 320 88 C 380 88 426 130 426 196 C 426 262 380 298 320 298 C 260 298 214 262 214 196 Z";
-    var body = "M 248 292 C 218 318 198 362 198 410 L 442 410 C 442 362 422 318 392 292 C 370 312 346 322 320 322 C 294 322 270 312 248 292 Z";
-    var extra = "";
-    if (style === "sticker") {
-      extra = '<path d="' + head + '" fill="none" stroke="#fff" stroke-width="30" stroke-linejoin="round"/><path d="' + body + '" fill="none" stroke="#fff" stroke-width="30" stroke-linejoin="round"/>';
-    } else if (style === "handdraw") {
-      extra = '<path d="M228 177 C252 118 290 105 320 105 C355 105 398 130 414 180" fill="none" stroke="' + spec.detail + '" stroke-width="2" stroke-dasharray="3 10" opacity=".45"/>';
-    } else if (style === "watercolor") {
-      extra = '<circle cx="170" cy="160" r="72" fill="#e2b5a0" opacity=".22"/><circle cx="470" cy="330" r="90" fill="#9bc6b2" opacity=".2"/><path d="' + head + '" fill="' + spec.body + '" opacity=".3" transform="translate(8 4)"/>';
-    } else if (style === "lineart") {
-      extra = '<path d="M260 120 L292 166 M380 120 L348 166 M266 356 Q320 380 374 356" fill="none" stroke="' + spec.detail + '" stroke-width="3" stroke-linecap="round"/>';
-    } else if (style === "cartoon") {
-      extra = '<path d="M214 206 Q180 226 196 260 Q212 275 232 258 M426 206 Q460 226 444 260 Q428 275 408 258" fill="none" stroke="' + spec.detail + '" stroke-width="' + spec.width + '" stroke-linecap="round"/>';
-    }
-    var face = '<circle cx="278" cy="196" r="12" fill="' + spec.detail + '"/><circle cx="362" cy="196" r="12" fill="' + spec.detail + '"/><path d="M300 232 Q320 248 340 232" fill="none" stroke="' + spec.detail + '" stroke-width="6" stroke-linecap="round"/>';
-    return '<svg xmlns="http://www.w3.org/2000/svg" width="640" height="480" viewBox="0 0 640 480"><rect width="640" height="480" rx="28" fill="' + spec.background + '"/>' + extra + '<path d="' + body + '" fill="' + spec.body + '" fill-opacity="' + spec.opacity + '" stroke="' + spec.outline + '" stroke-width="' + spec.width + '" stroke-linejoin="round"/><path d="' + head + '" fill="' + spec.body + '" fill-opacity="' + spec.opacity + '" stroke="' + spec.outline + '" stroke-width="' + spec.width + '" stroke-linejoin="round"/><path d="M238 112 L266 58 L302 104 M338 104 L374 58 L402 112" fill="' + spec.body + '" fill-opacity="' + spec.opacity + '" stroke="' + spec.outline + '" stroke-width="' + spec.width + '" stroke-linejoin="round"/>' + face + '<path d="M198 410 H442" stroke="' + spec.detail + '" stroke-width="4" stroke-linecap="round" opacity=".18"/></svg>';
-  }
+  var STYLE_REFERENCE_ASSETS = {
+    sticker: "/static/sticker-ai/style-references/sticker.png",
+    handdraw: "/static/sticker-ai/style-references/handdraw.png",
+    chibi: "/static/sticker-ai/style-references/chibi.png",
+    watercolor: "/static/sticker-ai/style-references/watercolor.png",
+    lineart: "/static/sticker-ai/style-references/lineart.png",
+    cartoon: "/static/sticker-ai/style-references/cartoon.png",
+  };
 
   function styleReferenceDataUrl(style) {
-    return "data:image/svg+xml;charset=utf-8," + encodeURIComponent(styleReferenceSvg(style));
+    if (STYLES.indexOf(style) < 0) throw new Error("不支援的插畫風格。");
+    return STYLE_REFERENCE_ASSETS[style];
   }
 
   var REFERENCE_PATHS = {
@@ -325,7 +305,6 @@
     nextFinalizationStatus: nextFinalizationStatus,
     referencePlan: referencePlan,
     referenceCompleteness: referenceCompleteness,
-    styleReferenceSvg: styleReferenceSvg,
     styleReferenceDataUrl: styleReferenceDataUrl,
     createManifest: createManifest,
     validateManifest: validateManifest,

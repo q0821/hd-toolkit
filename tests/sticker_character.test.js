@@ -1,5 +1,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const path = require("node:path");
 
 const Character = require("../static/sticker-ai/character-project.js");
 
@@ -259,10 +261,12 @@ test("archive metadata must match the references declared by the manifest", () =
     /與 manifest 不一致/
   );
 });
-test("style reference catalog exposes visual previews for every style", () => {
+test("style reference catalog exposes generated dog previews for every style", () => {
   Character.STYLES.forEach((style) => {
-    assert.match(Character.styleReferenceSvg(style), /^<svg\b/);
-    assert.match(Character.styleReferenceSvg(style), /viewBox=/);
+    const assetPath = Character.styleReferenceDataUrl(style);
+    assert.match(assetPath, new RegExp("/static/sticker-ai/style-references/" + style + "\\.png$"));
+    const filePath = path.join(__dirname, "..", assetPath.replace("/static/", "static/"));
+    assert.ok(fs.statSync(filePath).size > 0);
   });
 });
 
