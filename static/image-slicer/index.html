@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>圖片切片 · HD 的工具箱</title>
-  <meta name="description" content="上傳圖片，選欄數與列數，切成等分小圖，打包成 ZIP 下載 — 全部在瀏覽器裡完成。">
+  <meta name="description" content="上傳圖片，選欄數與列數，拖曳切線自訂各塊大小，打包成 ZIP 下載，全部在瀏覽器裡完成。">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="/static/shared/app.css">
@@ -29,13 +29,56 @@
       background-size: 18px 18px;
       background-position: 0 0, 0 9px, 9px -9px, -9px 0;
     }
-    .slicer-grid { position: absolute; inset: 0; pointer-events: none; }
-    .slicer-grid .gl-v { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--accent); opacity: 0.72; }
-    .slicer-grid .gl-h { position: absolute; left: 0; right: 0; height: 1px; background: var(--accent); opacity: 0.72; }
+    .slicer-grid { position: absolute; inset: 0; z-index: 2; pointer-events: none; }
+    .slicer-grid .gl-v,
+    .slicer-grid .gl-h {
+      position: absolute; display: block; padding: 0; border: 0; background: transparent;
+      color: var(--accent); opacity: 0.88; pointer-events: auto; touch-action: none;
+      user-select: none; -webkit-user-select: none;
+    }
+    .slicer-grid .gl-v { top: 0; bottom: 0; width: 20px; transform: translateX(-50%); cursor: col-resize; }
+    .slicer-grid .gl-h { left: 0; right: 0; height: 20px; transform: translateY(-50%); cursor: row-resize; }
+    .slicer-grid .gl-v::before,
+    .slicer-grid .gl-h::before {
+      content: ""; position: absolute; background: var(--accent); opacity: 0.76;
+      transition: width 0.12s, height 0.12s, opacity 0.12s;
+    }
+    .slicer-grid .gl-v::before { top: 0; bottom: 0; left: 50%; width: 1px; transform: translateX(-50%); }
+    .slicer-grid .gl-h::before { left: 0; right: 0; top: 50%; height: 1px; transform: translateY(-50%); }
+    .slicer-grid .gl-v::after,
+    .slicer-grid .gl-h::after {
+      content: ""; position: absolute; left: 50%; top: 50%;
+      border: 1px solid var(--accent); background: var(--surface);
+      opacity: 0.9; box-shadow: var(--shadow-sm);
+    }
+    .slicer-grid .gl-v::after { width: 4px; height: 28px; transform: translate(-50%, -50%); }
+    .slicer-grid .gl-h::after { width: 28px; height: 4px; transform: translate(-50%, -50%); }
+    .slicer-grid .gl-v:hover::before,
+    .slicer-grid .gl-v.is-dragging::before { width: 2px; opacity: 1; }
+    .slicer-grid .gl-h:hover::before,
+    .slicer-grid .gl-h.is-dragging::before { height: 2px; opacity: 1; }
+    .slicer-figure.is-dragging-x { cursor: col-resize; }
+    .slicer-figure.is-dragging-y { cursor: row-resize; }
     .slicer-caption { margin-top: var(--space-3); text-align: center; font-family: var(--font-mono); font-size: 12px; color: var(--text-dim); }
+    .slicer-hint { margin-top: var(--space-1); text-align: center; font-size: 12px; color: var(--text-muted); }
     .stepper-pair { display: flex; gap: var(--space-6); flex-wrap: wrap; }
     .hint-line { margin-top: var(--space-2); font-size: 12px; color: var(--text-dim); }
     .hint-line a { color: var(--text-muted); }
+    /*
+     * 中等寬度仍維持左側控制、右側預覽，只有窄手機才改成上下堆疊。
+     * 這頁的預覽是主要工作區，不應因控制項變窄而被推到下方。
+     */
+    @media (min-width: 521px) and (max-width: 880px) {
+      .tool-layout { flex-direction: row; min-height: calc(100vh - 57px); }
+      .tool-layout__controls {
+        width: 46vw; min-width: 240px; max-width: 280px;
+        padding: var(--space-6) var(--space-4);
+        border-right: 1px solid var(--border); border-bottom: 0;
+        gap: var(--space-4);
+      }
+      .tool-layout__preview { min-width: 0; padding: var(--space-4); align-items: flex-start; }
+      .slicer-stage { height: auto; align-items: flex-start; }
+    }
   </style>
 </head>
 <body>
@@ -170,6 +213,7 @@
               <div class="slicer-grid" id="previewGrid"></div>
             </div>
             <div class="slicer-caption" id="previewCaption"></div>
+            <div class="slicer-hint" id="previewHint">拖曳橙色切線調整每塊大小，按方向鍵可微調</div>
           </div>
         </div>
       </div>
@@ -200,12 +244,14 @@
       progress: $('progress'), progressBar: $('progressBar'), progressStatus: $('progressStatus'),
       errorMsg: $('errorMsg'), errorText: $('errorText'), successMsg: $('successMsg'), successText: $('successText'),
       previewEmpty: $('previewEmpty'), previewStage: $('previewStage'), previewFigure: $('previewFigure'),
-      previewImg: $('previewImg'), previewCanvas: $('previewCanvas'), previewGrid: $('previewGrid'), previewCaption: $('previewCaption')
+      previewImg: $('previewImg'), previewCanvas: $('previewCanvas'), previewGrid: $('previewGrid'),
+      previewCaption: $('previewCaption'), previewHint: $('previewHint')
     };
 
     // img 可能是 <img>（一般格式）或 <canvas>（HEIC 解碼後），所以尺寸另外存，
     // 不再直接讀 naturalWidth / naturalHeight
     var state = { cols: 3, rows: 3, format: 'png', img: null, imgW: 0, imgH: 0, imgURL: null, busy: false,
+                  xCuts: null, yCuts: null, drag: null,
                   chroma: false, chromaTolerance: 40, chromaCanvas: null, chromaDirty: false };
     var loadSeq = 0; // 換檔序號：HEIC 解碼是非同步的，快速連換時只有最後一次能寫入 state
 
@@ -221,12 +267,68 @@
       for (var i = 0; i < n; i++) { acc += (i === n - 1) ? (total - acc) : base; edges.push(acc); }
       return edges;
     }
+    // 調整欄 / 列數時盡量保留使用者已拖曳的切線：
+    // 增加時從最寬的區塊中間插入，減少時合併最窄的相鄰區塊。
+    function adjustCuts(cuts, total, count) {
+      if (!cuts || cuts.length < 2) return tileEdges(total, count);
+      var next = cuts.slice().map(function (n) { return Math.max(0, Math.min(total, Math.round(n))); });
+      next[0] = 0; next[next.length - 1] = total;
+      while (next.length - 1 < count) {
+        var widestIndex = 0, widest = -1;
+        for (var i = 0; i < next.length - 1; i++) {
+          var width = next[i + 1] - next[i];
+          if (width > widest) { widest = width; widestIndex = i; }
+        }
+        if (widest <= 0) return tileEdges(total, count);
+        next.splice(widestIndex + 1, 0, Math.floor((next[widestIndex] + next[widestIndex + 1]) / 2));
+      }
+      while (next.length - 1 > count) {
+        var removeIndex = 1, smallest = Infinity;
+        for (var j = 1; j < next.length - 1; j++) {
+          var merged = next[j + 1] - next[j - 1];
+          if (merged < smallest) { smallest = merged; removeIndex = j; }
+        }
+        next.splice(removeIndex, 1);
+      }
+      return next;
+    }
+
+    function cutsFor(axis) { return axis === 'x' ? state.xCuts : state.yCuts; }
+    function totalFor(axis) { return axis === 'x' ? state.imgW : state.imgH; }
+    function countFor(axis) { return axis === 'x' ? state.cols : state.rows; }
+    function minCutGap(axis) { return totalFor(axis) >= countFor(axis) ? 1 : 0; }
+
+    function clampCut(axis, index, value) {
+      var cuts = cutsFor(axis), gap = minCutGap(axis);
+      var min = cuts[index - 1] + gap, max = cuts[index + 1] - gap;
+      return Math.max(min, Math.min(max, Math.round(value)));
+    }
+
+    function guideLabel(axis, index) {
+      return axis === 'x'
+        ? '第 ' + index + ' 條垂直切線，距左側 ' + cutsFor(axis)[index] + ' px'
+        : '第 ' + index + ' 條水平切線，距上方 ' + cutsFor(axis)[index] + ' px';
+    }
+
+    function updateGuideHandle(axis, index) {
+      var handle = els.previewGrid.querySelector('[data-axis="' + axis + '"][data-index="' + index + '"]');
+      if (!handle) return;
+      var cuts = cutsFor(axis), total = totalFor(axis), value = cuts[index];
+      if (axis === 'x') handle.style.left = (value / total * 100) + '%';
+      else handle.style.top = (value / total * 100) + '%';
+      handle.setAttribute('aria-label', '拖曳調整' + guideLabel(axis, index));
+      handle.setAttribute('aria-valuemin', String(cuts[index - 1] + minCutGap(axis)));
+      handle.setAttribute('aria-valuemax', String(cuts[index + 1] - minCutGap(axis)));
+      handle.setAttribute('aria-valuenow', String(value));
+      handle.setAttribute('aria-valuetext', guideLabel(axis, index));
+    }
 
     function syncCounter() {
       var c = state.cols, r = state.rows;
       els.colsVal.textContent = c; els.rowsVal.textContent = r;
       els.cntCols.textContent = c; els.cntRows.textContent = r; els.cntTotal.textContent = c * r;
       document.querySelectorAll('.stepper').forEach(function (st) {
+
         var key = st.getAttribute('data-stepper'), v = state[key];
         st.querySelector('[data-delta="-1"]').disabled = (v <= MIN) || state.busy;
         st.querySelector('[data-delta="1"]').disabled = (v >= MAX) || state.busy;
@@ -303,15 +405,27 @@
     function renderGridOverlay() {
       els.previewGrid.replaceChildren();
       if (!state.img) return;
-      var W = state.imgW, H = state.imgH;
-      var xs = tileEdges(W, state.cols), ys = tileEdges(H, state.rows), i;
-      for (i = 1; i < xs.length - 1; i++) {
-        var v = document.createElement('div'); v.className = 'gl-v';
-        v.style.left = (xs[i] / W * 100) + '%'; els.previewGrid.appendChild(v);
+      var W = state.imgW, H = state.imgH, i;
+      if (!state.xCuts || state.xCuts.length !== state.cols + 1) state.xCuts = tileEdges(W, state.cols);
+      if (!state.yCuts || state.yCuts.length !== state.rows + 1) state.yCuts = tileEdges(H, state.rows);
+
+      for (i = 1; i < state.xCuts.length - 1; i++) {
+        var v = document.createElement('button');
+        v.type = 'button'; v.className = 'gl-v'; v.dataset.axis = 'x'; v.dataset.index = i;
+        v.setAttribute('role', 'slider'); v.setAttribute('aria-orientation', 'vertical');
+        v.addEventListener('pointerdown', startGuideDrag);
+        v.addEventListener('keydown', handleGuideKeydown);
+        els.previewGrid.appendChild(v);
+        updateGuideHandle('x', i);
       }
-      for (i = 1; i < ys.length - 1; i++) {
-        var h = document.createElement('div'); h.className = 'gl-h';
-        h.style.top = (ys[i] / H * 100) + '%'; els.previewGrid.appendChild(h);
+      for (i = 1; i < state.yCuts.length - 1; i++) {
+        var h = document.createElement('button');
+        h.type = 'button'; h.className = 'gl-h'; h.dataset.axis = 'y'; h.dataset.index = i;
+        h.setAttribute('role', 'slider'); h.setAttribute('aria-orientation', 'horizontal');
+        h.addEventListener('pointerdown', startGuideDrag);
+        h.addEventListener('keydown', handleGuideKeydown);
+        els.previewGrid.appendChild(h);
+        updateGuideHandle('y', i);
       }
     }
 
@@ -319,7 +433,67 @@
       if (!state.img) return;
       var W = state.imgW, H = state.imgH;
       els.previewCaption.textContent = (state.chroma ? '已去綠幕 ｜ ' : '') + '原圖 ' + W + ' × ' + H +
-        ' ｜ 每塊約 ' + Math.floor(W / state.cols) + ' × ' + Math.floor(H / state.rows) + ' px';
+        ' ｜ ' + state.cols + ' 欄 × ' + state.rows + ' 列';
+    }
+
+    function updateGuideFromPointer(e) {
+      if (!state.drag || !state.img) return;
+      var axis = state.drag.axis, rect = els.previewFigure.getBoundingClientRect();
+      var span = axis === 'x' ? rect.width : rect.height;
+      var offset = axis === 'x' ? e.clientX - rect.left : e.clientY - rect.top;
+      if (!span) return;
+      var value = offset / span * totalFor(axis);
+      cutsFor(axis)[state.drag.index] = clampCut(axis, state.drag.index, value);
+      updateGuideHandle(axis, state.drag.index);
+      updateCaption();
+    }
+
+    function stopGuideDrag(e) {
+      if (!state.drag || (e && e.pointerId !== state.drag.pointerId)) return;
+      var drag = state.drag;
+      if (drag.handle && drag.handle.hasPointerCapture && drag.handle.hasPointerCapture(drag.pointerId)) {
+        drag.handle.releasePointerCapture(drag.pointerId);
+      }
+      drag.handle.classList.remove('is-dragging');
+      els.previewFigure.classList.remove('is-dragging-x', 'is-dragging-y');
+      document.removeEventListener('pointermove', updateGuideFromPointer);
+      document.removeEventListener('pointerup', stopGuideDrag);
+      document.removeEventListener('pointercancel', stopGuideDrag);
+      state.drag = null;
+    }
+
+    function startGuideDrag(e) {
+      if (state.busy || !state.img || (e.button !== undefined && e.button !== 0)) return;
+      e.preventDefault();
+      var handle = e.currentTarget;
+      state.drag = {
+        axis: handle.dataset.axis,
+        index: parseInt(handle.dataset.index, 10),
+        pointerId: e.pointerId,
+        handle: handle
+      };
+      handle.classList.add('is-dragging');
+      els.previewFigure.classList.add('is-dragging-' + state.drag.axis);
+      if (handle.setPointerCapture) handle.setPointerCapture(e.pointerId);
+      document.addEventListener('pointermove', updateGuideFromPointer);
+      document.addEventListener('pointerup', stopGuideDrag);
+      document.addEventListener('pointercancel', stopGuideDrag);
+    }
+
+    function handleGuideKeydown(e) {
+      if (state.busy || !state.img) return;
+      var axis = e.currentTarget.dataset.axis, index = parseInt(e.currentTarget.dataset.index, 10);
+      var key = e.key, direction = 0;
+      if ((axis === 'x' && key === 'ArrowLeft') || (axis === 'y' && key === 'ArrowUp')) direction = -1;
+      if ((axis === 'x' && key === 'ArrowRight') || (axis === 'y' && key === 'ArrowDown')) direction = 1;
+      var cuts = cutsFor(axis);
+      if (key === 'Home') cuts[index] = cuts[index - 1] + minCutGap(axis);
+      else if (key === 'End') cuts[index] = cuts[index + 1] - minCutGap(axis);
+      else if (direction) cuts[index] = clampCut(axis, index, cuts[index] + direction * (e.shiftKey ? 10 : 1));
+      else return;
+      e.preventDefault();
+      updateGuideHandle(axis, index);
+      updateCaption();
     }
 
     function refreshPreview() {
@@ -331,6 +505,7 @@
     function applyLoaded(file, node, w, h, url) {
       if (state.imgURL) { URL.revokeObjectURL(state.imgURL); state.imgURL = null; }
       state.img = node; state.imgW = w; state.imgH = h; state.imgURL = url || null;
+      state.xCuts = tileEdges(w, state.cols); state.yCuts = tileEdges(h, state.rows); state.drag = null;
       state.chromaCanvas = null; state.chromaDirty = true;
       els.fileName.textContent = file.name + '  ·  ' + w + '×' + h;
       els.fileName.classList.add('is-shown');
@@ -405,7 +580,7 @@
       var quality = fmt.lossy ? (parseInt(els.qualitySlider.value, 10) / 100) : undefined;
       var prefix = sanitizePrefix(els.prefixInput.value); // 可為空字串
       var W = state.imgW, H = state.imgH;
-      var xs = tileEdges(W, cols), ys = tileEdges(H, rows);
+      var xs = state.xCuts, ys = state.yCuts;
 
       state.busy = true; hideMessages();
       syncSliceBtn(); syncCounter(); syncQualityRow(); syncFormatAvailability(); syncChromaRow();
@@ -471,7 +646,12 @@
       st.querySelectorAll('.stepper__btn').forEach(function (btn) {
         btn.addEventListener('click', function () {
           if (state.busy) return;
+          var previous = state[key];
           state[key] = clamp(state[key] + parseInt(btn.getAttribute('data-delta'), 10));
+          if (state.img && state[key] !== previous) {
+            if (key === 'cols') state.xCuts = adjustCuts(state.xCuts, state.imgW, state.cols);
+            else state.yCuts = adjustCuts(state.yCuts, state.imgH, state.rows);
+          }
           refreshPreview();
         });
       });
