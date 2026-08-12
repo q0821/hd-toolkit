@@ -11,14 +11,17 @@
   <script src="/static/shared/theme.js"></script>
   <script src="/static/shared/settings.js"></script>
   <style>
-    .tool-layout__controls { padding: var(--space-6) var(--space-5); gap: var(--space-4); }
+    .tool-layout { min-width: 0; }
+    .tool-layout__controls { min-width: 0; padding: var(--space-6); gap: var(--space-4); }
+    .tool-layout__controls > * { min-width: 0; }
     .tool-layout__controls > .section + .section { margin-top: 0; }
     .tool-layout__controls .section__label { margin-bottom: var(--space-2); }
     .tool-layout__controls .mt-4 { margin-top: var(--space-2); }
     .tool-layout__controls .dropzone { padding: var(--space-8) var(--space-4); }
-    .tool-layout__preview { align-items: flex-start; overflow: auto; padding: var(--space-6); }
+    .tool-layout__preview { min-width: 0; align-items: flex-start; overflow: auto; padding: var(--space-6); }
     .wm-preview-wrap { width: 100%; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: var(--space-4); }
-    .wm-empty { margin: auto; }
+    .wm-preview-wrap[hidden] { display: none; }
+    .wm-empty { margin: auto 0; }
     .wm-figure {
       position: relative; display: inline-block; max-width: 100%; line-height: 0;
       background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm);
@@ -50,7 +53,7 @@
     .wm-color-field input[type="color"] { width: 42px; height: 38px; padding: 3px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface-2); cursor: pointer; }
     .wm-color-value { font-family: var(--font-mono); font-size: 13px; color: var(--text-muted); }
     .wm-textarea { min-height: 72px; resize: vertical; font-family: var(--font-body); line-height: 1.5; }
-    .wm-position-grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-2); }
+    .wm-position-grid { min-width: 0; display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-2); }
     .wm-position-grid .range-field { gap: var(--space-2); }
     .wm-position-grid .range-field__val { min-width: 44px; text-align: right; }
     .wm-check-row { display: flex; align-items: flex-start; gap: var(--space-2); padding: var(--space-1) 0; color: var(--text); font-size: 14px; cursor: pointer; }
