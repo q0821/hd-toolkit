@@ -1,0 +1,508 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>圖片壓字 · HD 的工具箱</title>
+  <meta name="description" content="上傳多張圖片，輸入文字並調整顏色、大小、角度、位置與透明度，可選擇重複鋪滿後下載。所有處理都在瀏覽器完成，圖片不上傳。">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="/static/shared/app.css">
+  <script src="/static/shared/theme.js"></script>
+  <script src="/static/shared/settings.js"></script>
+  <style>
+    .tool-layout__preview { align-items: flex-start; overflow: auto; padding: var(--space-6); }
+    .wm-preview-wrap { width: 100%; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: var(--space-4); }
+    .wm-empty { margin: auto; }
+    .wm-figure {
+      position: relative; display: inline-block; max-width: 100%; line-height: 0;
+      background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm);
+      box-shadow: var(--shadow-md); overflow: visible;
+    }
+    .wm-figure[hidden] { display: none; }
+    .wm-figure canvas { display: block; max-width: 100%; max-height: calc(100vh - 260px); border-radius: var(--radius-sm); }
+    .wm-interaction { position: absolute; inset: 0; pointer-events: none; }
+    .wm-hitbox {
+      position: absolute; display: block; padding: 0; min-width: 8px; min-height: 8px;
+      border: 1px dashed transparent; background: transparent; pointer-events: auto; cursor: grab;
+      transform-origin: center center; touch-action: none; outline: none;
+    }
+    .wm-hitbox:hover, .wm-hitbox:focus-visible, .wm-hitbox.is-dragging { border-color: var(--accent); background: var(--accent-subtle); cursor: grabbing; }
+    .wm-hitbox:focus-visible { box-shadow: 0 0 0 3px var(--focus-ring); }
+    .wm-caption { text-align: center; font-family: var(--font-mono); font-size: 12px; color: var(--text-dim); line-height: 1.5; }
+    .wm-thumbs { width: 100%; display: flex; gap: var(--space-2); overflow-x: auto; padding: var(--space-2); background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-md); }
+    .wm-thumbs[hidden] { display: none; }
+    .wm-thumb { position: relative; flex: 0 0 92px; display: flex; flex-direction: column; gap: 4px; }
+    .wm-thumb__select { width: 92px; height: 72px; padding: 4px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface); cursor: pointer; }
+    .wm-thumb__select:hover { border-color: var(--accent-border); }
+    .wm-thumb__select.is-active { border-color: var(--accent); background: var(--accent-subtle); }
+    .wm-thumb__select canvas { display: block; width: 100%; height: 100%; object-fit: contain; }
+    .wm-thumb__name { width: 92px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: center; font-size: 11px; color: var(--text-muted); }
+    .wm-thumb__remove { position: absolute; top: -7px; right: -7px; width: 22px; height: 22px; padding: 0; border: 1px solid var(--error); border-radius: var(--radius-full); background: var(--surface); color: var(--error); font-size: 15px; line-height: 18px; cursor: pointer; }
+    .wm-thumb__remove:hover { color: var(--accent-fg); background: var(--error); }
+    .wm-style-row { display: flex; align-items: end; gap: var(--space-3); }
+    .wm-color-field { display: flex; align-items: center; gap: var(--space-3); flex: 1; }
+    .wm-color-field input[type="color"] { width: 42px; height: 38px; padding: 3px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface-2); cursor: pointer; }
+    .wm-color-value { font-family: var(--font-mono); font-size: 13px; color: var(--text-muted); }
+    .wm-textarea { min-height: 88px; resize: vertical; font-family: var(--font-body); line-height: 1.5; }
+    .wm-position-grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3); }
+    .wm-position-grid .range-field { gap: var(--space-2); }
+    .wm-position-grid .range-field__val { min-width: 44px; text-align: right; }
+    .wm-check-row { display: flex; align-items: flex-start; gap: var(--space-2); padding: var(--space-2) 0; color: var(--text); font-size: 14px; cursor: pointer; }
+    .wm-check-row input { width: 16px; height: 16px; margin-top: 2px; cursor: pointer; accent-color: var(--accent); }
+    .wm-check-row small { display: block; margin-top: 2px; color: var(--text-dim); font-size: 12px; line-height: 1.5; }
+    .wm-actions { display: grid; gap: var(--space-2); }
+    .wm-actions-row { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-2); }
+    .wm-actions-row .btn { min-width: 0; }
+    .wm-status { display: flex; justify-content: space-between; gap: var(--space-2); color: var(--text-muted); font-size: 12px; }
+    .wm-status b { color: var(--text); font-family: var(--font-mono); font-weight: 500; }
+    .wm-note { margin-top: var(--space-2); color: var(--text-dim); font-size: 12px; line-height: 1.6; }
+    @media (min-width: 521px) and (max-width: 880px) {
+      .tool-layout { flex-direction: row; min-height: calc(100vh - 57px); }
+      .tool-layout__controls { width: 46vw; min-width: 240px; max-width: 300px; padding: var(--space-6) var(--space-4); border-right: 1px solid var(--border); border-bottom: 0; gap: var(--space-4); }
+      .tool-layout__preview { min-width: 0; padding: var(--space-4); align-items: flex-start; }
+    }
+    @media (max-width: 520px) {
+      .tool-layout__preview { padding: var(--space-4); }
+      .wm-actions-row { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+
+  <header class="app-header">
+    <div class="app-header__row">
+      <a href="/" class="brand">HD 的工具箱</a>
+      <span class="crumb-sep">/</span>
+      <span class="crumb-cur">圖片壓字</span>
+      <span class="app-header__spacer"></span>
+      <a href="/" class="btn btn--ghost" style="padding:6px 10px;font-size:13px">
+        <svg class="icon icon--sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+        回工具箱
+      </a>
+      <button type="button" class="theme-toggle" id="themeToggle" aria-label="切換亮 / 暗模式" title="切換亮 / 暗模式">
+        <svg class="icon icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l1.41 1.41"/></svg>
+        <svg class="icon icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <main class="app-main app-main--full">
+    <div class="tool-layout">
+      <div class="tool-layout__controls">
+        <div class="section">
+          <div class="section__label"><span class="section__num">01</span> 上傳圖片</div>
+          <div class="dropzone" id="dropzone">
+            <input type="file" id="fileInput" accept="image/jpeg,image/png,image/webp,image/avif,.jpg,.jpeg,.png,.webp,.avif,.heic,.heif" multiple hidden>
+            <svg class="dropzone__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M8.5 10a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3z"/><path d="M21 15l-5-5L5 21"/></svg>
+            <div class="dropzone__title">拖曳圖片到這裡</div>
+            <div class="dropzone__hint">可一次多張（JPG / PNG / WEBP / HEIC）</div>
+            <span class="dropzone__file" id="fileCount"></span>
+          </div>
+          <button type="button" class="btn btn--ghost" id="clearBtn" style="display:none;margin-top:var(--space-2);padding:6px 10px;font-size:13px">清空圖片</button>
+        </div>
+
+        <div class="section">
+          <div class="section__label"><span class="section__num">02</span> 文字內容</div>
+          <textarea id="textInput" class="text-field wm-textarea" maxlength="200" placeholder="例如：僅供申請○○使用" aria-label="壓在圖片上的文字"></textarea>
+          <p class="wm-note"><span id="textCount">0</span> / 200 字。文字只會寫入下載的圖片，不會上傳。</p>
+        </div>
+
+        <div class="section">
+          <div class="section__label"><span class="section__num">03</span> 文字樣式</div>
+          <div class="wm-style-row">
+            <div class="wm-color-field">
+              <div>
+                <span class="field-label">顏色</span>
+                <input type="color" id="colorInput" value="#000000" aria-label="文字顏色">
+              </div>
+              <span class="wm-color-value" id="colorValue">#000000</span>
+            </div>
+          </div>
+          <div class="mt-4">
+            <span class="field-label">大小（依圖片短邊比例）</span>
+            <div class="range-field"><input type="range" id="sizeSlider" min="1" max="15" step="0.5" value="5"><span class="range-field__val" id="sizeVal">5%</span></div>
+          </div>
+          <div class="mt-4">
+            <span class="field-label">角度</span>
+            <div class="range-field"><input type="range" id="rotationSlider" min="-180" max="180" value="0"><span class="range-field__val" id="rotationVal">0°</span></div>
+          </div>
+          <div class="mt-4">
+            <span class="field-label">透明度</span>
+            <div class="range-field"><input type="range" id="opacitySlider" min="10" max="100" value="40"><span class="range-field__val" id="opacityVal">40%</span></div>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section__label"><span class="section__num">04</span> 文字位置</div>
+          <div class="wm-position-grid">
+            <div><span class="field-label">水平位置</span><div class="range-field"><input type="range" id="xSlider" min="0" max="100" value="50"><span class="range-field__val" id="xVal">50%</span></div></div>
+            <div><span class="field-label">垂直位置</span><div class="range-field"><input type="range" id="ySlider" min="0" max="100" value="50"><span class="range-field__val" id="yVal">50%</span></div></div>
+          </div>
+          <p class="wm-note">也可以直接拖曳預覽中的文字位置。</p>
+        </div>
+
+        <div class="section">
+          <div class="section__label"><span class="section__num">05</span> 重複鋪滿</div>
+          <label class="wm-check-row">
+            <input type="checkbox" id="repeatInput">
+            <span><strong>重複鋪滿整張圖片</strong><small>使用同一組文字設定，以規則間距鋪滿畫面。</small></span>
+          </label>
+        </div>
+
+        <div class="wm-actions">
+          <div class="wm-actions-row">
+            <button type="button" class="btn btn--secondary" id="downloadCurrent" disabled>下載目前圖片</button>
+            <button type="button" class="btn btn--primary" id="downloadZip" disabled>全部下載 ZIP</button>
+          </div>
+          <div class="wm-status"><span>目前圖片</span><b id="activeStatus">尚未上傳</b></div>
+        </div>
+
+        <div class="progress" id="progress">
+          <div class="progress__header"><span class="progress__label">處理中</span><span class="progress__status" id="progressStatus"></span></div>
+          <div class="progress__track"><div class="progress__bar" id="progressBar"></div></div>
+        </div>
+
+        <div class="message message--error" id="errorMsg">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M15 9l-6 6M9 9l6 6"/></svg>
+          <span id="errorText"></span>
+        </div>
+        <div class="message message--success" id="successMsg">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><path d="M22 4L12 14.01l-3-3"/></svg>
+          <span id="successText"></span>
+        </div>
+        <p class="wm-note">所有圖片處理都在瀏覽器完成，圖片不會上傳到伺服器。HEIC 第一次使用時會載入解碼器。</p>
+      </div>
+
+      <div class="tool-layout__preview" id="previewArea">
+        <div class="preview-empty wm-empty" id="previewEmpty">
+          <svg class="preview-empty__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg>
+          <p>上傳圖片後，預覽會顯示於此</p>
+        </div>
+        <div class="wm-preview-wrap" id="previewWrap" hidden>
+          <div class="wm-figure" id="previewFigure">
+            <canvas id="previewCanvas" aria-label="圖片壓字預覽"></canvas>
+            <div class="wm-interaction"><button type="button" class="wm-hitbox" id="hitbox" aria-label="拖曳調整文字位置" role="slider" aria-valuemin="0" aria-valuemax="100"></button></div>
+          </div>
+          <p class="wm-caption" id="previewCaption"></p>
+          <div class="wm-thumbs" id="thumbList" hidden></div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <footer class="app-footer"><p>圖片壓字在瀏覽器內完成，適合為證件圖片加上用途標記。</p></footer>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+  <script src="/static/shared/heic-decode.js"></script>
+  <script>
+  (function () {
+    'use strict';
+
+    var MAX_PIXELS = 50 * 1000 * 1000;
+    var ALLOWED_MIME = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/avif': 'png' };
+    var ALLOWED_EXT = /\.(jpe?g|png|webp|avif)$/i;
+    var $ = function (id) { return document.getElementById(id); };
+    var els = {
+      dropzone: $('dropzone'), fileInput: $('fileInput'), fileCount: $('fileCount'), clearBtn: $('clearBtn'),
+      textInput: $('textInput'), textCount: $('textCount'), colorInput: $('colorInput'), colorValue: $('colorValue'),
+      sizeSlider: $('sizeSlider'), sizeVal: $('sizeVal'), rotationSlider: $('rotationSlider'), rotationVal: $('rotationVal'),
+      opacitySlider: $('opacitySlider'), opacityVal: $('opacityVal'), xSlider: $('xSlider'), xVal: $('xVal'), ySlider: $('ySlider'), yVal: $('yVal'), repeatInput: $('repeatInput'),
+      downloadCurrent: $('downloadCurrent'), downloadZip: $('downloadZip'), activeStatus: $('activeStatus'),
+      progress: $('progress'), progressBar: $('progressBar'), progressStatus: $('progressStatus'),
+      errorMsg: $('errorMsg'), errorText: $('errorText'), successMsg: $('successMsg'), successText: $('successText'),
+      previewEmpty: $('previewEmpty'), previewWrap: $('previewWrap'), previewFigure: $('previewFigure'), previewCanvas: $('previewCanvas'), hitbox: $('hitbox'), previewCaption: $('previewCaption'), thumbList: $('thumbList')
+    };
+    var state = {
+      items: [], activeId: null, nextId: 1, loadSeq: 0, busy: false, drag: null,
+      watermark: { text: '', color: '#000000', fontScale: 5, rotation: 0, opacity: 0.4, anchorX: 0.5, anchorY: 0.5, repeat: false }
+    };
+
+    function clamp(value, min, max) { return Math.max(min, Math.min(max, value)); }
+    function activeItem() { return state.items.find(function (item) { return item.id === state.activeId; }) || null; }
+    function showError(message) { els.errorText.textContent = message; els.errorMsg.classList.add('is-shown'); els.successMsg.classList.remove('is-shown'); }
+    function showSuccess(message) { els.successText.textContent = message; els.successMsg.classList.add('is-shown'); els.errorMsg.classList.remove('is-shown'); }
+    function hideMessages() { els.errorMsg.classList.remove('is-shown'); els.successMsg.classList.remove('is-shown'); }
+    function nextTick() { return new Promise(function (resolve) { setTimeout(resolve, 0); }); }
+    function fileBaseName(name) {
+      var base = (name || 'image').replace(/\.[^.]+$/, '').replace(/[\\/:*?"<>|]+/g, '_').trim();
+      return (base || 'image').slice(0, 120);
+    }
+    function outputInfo(item) {
+      if (item.isHeic) return { mime: 'image/jpeg', ext: 'jpg', quality: 0.95 };
+      if (item.mime === 'image/avif') return { mime: 'image/png', ext: 'png', quality: undefined };
+      var ext = ALLOWED_MIME[item.mime] || 'png';
+      var mime = ext === 'jpg' ? 'image/jpeg' : 'image/' + ext;
+      return { mime: mime, ext: ext, quality: ext === 'png' ? undefined : 0.95 };
+    }
+    function canvasToBlob(canvas, mime, quality) {
+      return new Promise(function (resolve, reject) {
+        canvas.toBlob(function (blob) { blob ? resolve(blob) : reject(new Error('瀏覽器無法產生 ' + mime + ' 圖片。')); }, mime, quality);
+      });
+    }
+    function downloadBlob(blob, filename) {
+      var url = URL.createObjectURL(blob), link = document.createElement('a');
+      link.href = url; link.download = filename; document.body.appendChild(link); link.click(); link.remove();
+      setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+    }
+    function setProgress(percent, status) { els.progressBar.style.width = percent + '%'; els.progressStatus.textContent = status; }
+
+    function sourceDimensions(source) { return { width: source.width || source.naturalWidth, height: source.height || source.naturalHeight }; }
+
+    function measureTextBlock(ctx, text, width, height, config) {
+      var fontPx = Math.max(8, Math.round(Math.min(width, height) * config.fontScale / 100));
+      var lineHeight = Math.max(10, Math.round(fontPx * 1.25));
+      var lines = String(text).split('\n');
+      ctx.font = '500 ' + fontPx + 'px "IBM Plex Sans", system-ui, sans-serif';
+      var maxWidth = 0;
+      lines.forEach(function (line) { maxWidth = Math.max(maxWidth, ctx.measureText(line || ' ').width); });
+      var padding = Math.max(2, Math.round(fontPx * 0.08));
+      return { fontPx: fontPx, lineHeight: lineHeight, lines: lines, width: Math.max(8, Math.ceil(maxWidth + padding * 2)), height: Math.max(lineHeight, lines.length * lineHeight), font: ctx.font };
+    }
+
+    function drawTextBlock(ctx, text, centerX, centerY, metrics, config) {
+      ctx.save();
+      ctx.translate(centerX, centerY);
+      ctx.rotate(config.rotation * Math.PI / 180);
+      ctx.globalAlpha = config.opacity;
+      ctx.fillStyle = config.color;
+      ctx.font = metrics.font;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      var start = -((metrics.lines.length - 1) * metrics.lineHeight) / 2;
+      metrics.lines.forEach(function (line, index) { ctx.fillText(line, 0, start + index * metrics.lineHeight); });
+      ctx.restore();
+    }
+
+    function renderWatermarkedImage(source, width, height, config, target) {
+      var canvas = target || document.createElement('canvas');
+      canvas.width = width; canvas.height = height;
+      var ctx = canvas.getContext('2d');
+      ctx.clearRect(0, 0, width, height);
+      ctx.drawImage(source, 0, 0, width, height);
+      var metrics = measureTextBlock(ctx, config.text, width, height, config);
+      var centerX = width * config.anchorX, centerY = height * config.anchorY;
+      if (config.text.trim()) {
+        if (!config.repeat) {
+          drawTextBlock(ctx, config.text, centerX, centerY, metrics, config);
+        } else {
+          var stepX = Math.max(metrics.width * 2.4, metrics.fontPx * 6);
+          var stepY = Math.max(metrics.height * 2.8, metrics.fontPx * 6);
+          var minCol = Math.floor((0 - centerX) / stepX) - 1;
+          var maxCol = Math.ceil((width - centerX) / stepX) + 1;
+          var minRow = Math.floor((0 - centerY) / stepY) - 1;
+          var maxRow = Math.ceil((height - centerY) / stepY) + 1;
+          for (var row = minRow; row <= maxRow; row++) {
+            for (var col = minCol; col <= maxCol; col++) {
+              drawTextBlock(ctx, config.text, centerX + col * stepX, centerY + row * stepY, metrics, config);
+            }
+          }
+        }
+      }
+      return { canvas: canvas, layout: { x: centerX, y: centerY, width: metrics.width, height: metrics.height }, metrics: metrics };
+    }
+    window.TextWatermark = { renderWatermarkedImage: renderWatermarkedImage };
+
+    function drawThumbnail(item, canvas) {
+      var dims = sourceDimensions(item.source), ctx = canvas.getContext('2d'), scale = Math.min(canvas.width / dims.width, canvas.height / dims.height);
+      var w = Math.max(1, Math.round(dims.width * scale)), h = Math.max(1, Math.round(dims.height * scale));
+      ctx.clearRect(0, 0, canvas.width, canvas.height); ctx.drawImage(item.source, (canvas.width - w) / 2, (canvas.height - h) / 2, w, h);
+    }
+    function renderThumbs() {
+      els.thumbList.replaceChildren();
+      if (!state.items.length) { els.thumbList.hidden = true; return; }
+      els.thumbList.hidden = false;
+      state.items.forEach(function (item, index) {
+        var wrap = document.createElement('div'); wrap.className = 'wm-thumb';
+        var select = document.createElement('button'); select.type = 'button'; select.className = 'wm-thumb__select' + (item.id === state.activeId ? ' is-active' : ''); select.title = '選擇第 ' + (index + 1) + ' 張'; select.setAttribute('aria-label', '選擇第 ' + (index + 1) + ' 張：' + item.name);
+        var canvas = document.createElement('canvas'); canvas.width = 184; canvas.height = 144; drawThumbnail(item, canvas); select.appendChild(canvas); select.addEventListener('click', function () { state.activeId = item.id; renderThumbs(); renderPreview(); });
+        var name = document.createElement('span'); name.className = 'wm-thumb__name'; name.textContent = item.name;
+        var remove = document.createElement('button'); remove.type = 'button'; remove.className = 'wm-thumb__remove'; remove.textContent = '×'; remove.title = '移除 ' + item.name; remove.setAttribute('aria-label', '移除 ' + item.name); remove.addEventListener('click', function () { removeItem(item.id); });
+        wrap.appendChild(select); wrap.appendChild(name); wrap.appendChild(remove); els.thumbList.appendChild(wrap);
+      });
+    }
+
+    function syncHitbox(result) {
+      var item = activeItem();
+      if (!item || !state.watermark.text.trim()) { els.hitbox.hidden = true; return; }
+      var rect = els.previewCanvas.getBoundingClientRect(), scaleX = rect.width / item.width, scaleY = rect.height / item.height;
+      els.hitbox.hidden = false;
+      els.hitbox.style.left = result.layout.x * scaleX + 'px'; els.hitbox.style.top = result.layout.y * scaleY + 'px';
+      els.hitbox.style.width = Math.max(8, result.layout.width * scaleX) + 'px'; els.hitbox.style.height = Math.max(8, result.layout.height * scaleY) + 'px';
+      els.hitbox.style.transform = 'translate(-50%, -50%) rotate(' + state.watermark.rotation + 'deg)';
+      els.hitbox.setAttribute('aria-valuenow', String(Math.round(state.watermark.anchorX * 100)));
+      els.hitbox.setAttribute('aria-valuetext', '水平 ' + Math.round(state.watermark.anchorX * 100) + '%，垂直 ' + Math.round(state.watermark.anchorY * 100) + '%');
+    }
+    function renderPreview() {
+      var item = activeItem();
+      if (!item) { els.previewEmpty.hidden = false; els.previewWrap.hidden = true; els.activeStatus.textContent = '尚未上傳'; syncButtons(); return; }
+      els.previewEmpty.hidden = true; els.previewWrap.hidden = false;
+      var result = renderWatermarkedImage(item.source, item.width, item.height, state.watermark, els.previewCanvas);
+      els.previewCaption.textContent = '第 ' + (state.items.indexOf(item) + 1) + ' / ' + state.items.length + ' 張 · ' + item.width + ' × ' + item.height + ' · ' + (state.watermark.repeat ? '重複鋪滿' : '單次文字');
+      els.activeStatus.textContent = (state.items.indexOf(item) + 1) + ' / ' + state.items.length;
+      requestAnimationFrame(function () { syncHitbox(result); });
+      syncButtons();
+    }
+    function updateSizeLabel() {
+      var item = activeItem(), px = item ? Math.max(8, Math.round(Math.min(item.width, item.height) * state.watermark.fontScale / 100)) : null;
+      els.sizeVal.textContent = state.watermark.fontScale + '%' + (px ? ' · ' + px + ' px' : '');
+    }
+    function syncControls() {
+      els.textInput.value = state.watermark.text; els.textCount.textContent = state.watermark.text.length;
+      els.colorInput.value = state.watermark.color; els.colorValue.textContent = state.watermark.color.toUpperCase();
+      els.sizeSlider.value = state.watermark.fontScale; els.rotationSlider.value = state.watermark.rotation; els.opacitySlider.value = Math.round(state.watermark.opacity * 100);
+      els.xSlider.value = Math.round(state.watermark.anchorX * 100); els.ySlider.value = Math.round(state.watermark.anchorY * 100); els.repeatInput.checked = state.watermark.repeat;
+      els.rotationVal.textContent = state.watermark.rotation + '°'; els.opacityVal.textContent = Math.round(state.watermark.opacity * 100) + '%'; els.xVal.textContent = Math.round(state.watermark.anchorX * 100) + '%'; els.yVal.textContent = Math.round(state.watermark.anchorY * 100) + '%';
+      updateSizeLabel();
+    }
+    function syncButtons() {
+      var canDownload = !!activeItem() && !!state.watermark.text.trim() && !state.busy;
+      els.downloadCurrent.disabled = !canDownload; els.downloadZip.disabled = !canDownload || state.items.length < 1; els.clearBtn.style.display = state.items.length ? 'inline-flex' : 'none';
+      els.fileCount.textContent = state.items.length ? '已選 ' + state.items.length + ' 張' : '';
+      els.fileCount.classList.toggle('is-shown', !!state.items.length);
+    }
+
+    async function loadFile(file) {
+      var isHeic = await HeicDecode.isHeic(file);
+      if (isHeic) {
+        var heicCanvas = await HeicDecode.decodeToCanvas(await file.arrayBuffer());
+        if (heicCanvas.width * heicCanvas.height > MAX_PIXELS) throw new Error('圖片太大，單張上限為 50 MP。');
+        return { source: heicCanvas, width: heicCanvas.width, height: heicCanvas.height, isHeic: true, mime: file.type || 'image/heic', url: null };
+      }
+      var sourceMime = (file.type || '').toLowerCase();
+      if (sourceMime && !ALLOWED_MIME[sourceMime]) throw new Error('不支援的圖片格式，請使用 JPG、PNG、WEBP 或 HEIC。');
+      if (!sourceMime) {
+        if (!ALLOWED_EXT.test(file.name || '')) throw new Error('不支援的圖片格式，請使用 JPG、PNG、WEBP 或 HEIC。');
+        sourceMime = /\.jpe?g$/i.test(file.name) ? 'image/jpeg' : (/\.webp$/i.test(file.name) ? 'image/webp' : 'image/avif');
+      }
+      var url = URL.createObjectURL(file);
+      try {
+        var image = await new Promise(function (resolve, reject) {
+          var img = new Image(); img.onload = function () { resolve(img); }; img.onerror = function () { reject(new Error('這個檔案無法當作圖片載入。')); }; img.src = url;
+        });
+        if (!image.naturalWidth || !image.naturalHeight) throw new Error('無法讀取這張圖片的尺寸。');
+        if (image.naturalWidth * image.naturalHeight > MAX_PIXELS) throw new Error('圖片太大，單張上限為 50 MP。');
+        return { source: image, width: image.naturalWidth, height: image.naturalHeight, isHeic: false, mime: sourceMime, url: url };
+      } catch (error) { URL.revokeObjectURL(url); throw error; }
+    }
+    async function addFiles(files) {
+      var sequence = ++state.loadSeq, added = 0, failed = [];
+      hideMessages();
+      for (var i = 0; i < files.length; i++) {
+        if (sequence !== state.loadSeq) return;
+        try {
+          var loaded = await loadFile(files[i]);
+          if (sequence !== state.loadSeq) { if (loaded.url) URL.revokeObjectURL(loaded.url); return; }
+          state.items.push({ id: state.nextId++, name: files[i].name || 'image', file: files[i], source: loaded.source, width: loaded.width, height: loaded.height, isHeic: loaded.isHeic, mime: loaded.mime, url: loaded.url });
+          added++;
+          if (!state.activeId) state.activeId = state.items[state.items.length - 1].id;
+          renderThumbs(); renderPreview();
+        } catch (error) { failed.push((files[i].name || '圖片') + '：' + (error.message || '讀取失敗')); }
+      }
+      els.fileInput.value = '';
+      if (added) showSuccess('已加入 ' + added + ' 張圖片。');
+      if (failed.length) showError('以下檔案無法加入：' + failed.join('；'));
+      syncButtons();
+    }
+    function releaseItem(item) { if (item && item.url) URL.revokeObjectURL(item.url); }
+    function removeItem(id) {
+      var index = state.items.findIndex(function (item) { return item.id === id; });
+      if (index < 0) return;
+      releaseItem(state.items[index]); state.items.splice(index, 1);
+      if (state.activeId === id) state.activeId = state.items[index] ? state.items[index].id : (state.items[index - 1] ? state.items[index - 1].id : null);
+      renderThumbs(); renderPreview();
+    }
+    function clearAll() {
+      state.loadSeq++;
+      state.items.forEach(releaseItem); state.items = []; state.activeId = null; els.fileInput.value = ''; hideMessages(); renderThumbs(); renderPreview();
+    }
+
+    async function renderItemBlob(item) {
+      var info = outputInfo(item), result = renderWatermarkedImage(item.source, item.width, item.height, state.watermark);
+      return { blob: await canvasToBlob(result.canvas, info.mime, info.quality), info: info };
+    }
+    async function downloadCurrent() {
+      var item = activeItem(); if (!item || !state.watermark.text.trim() || state.busy) return;
+      state.busy = true; hideMessages(); syncButtons(); els.progress.classList.add('is-shown'); setProgress(30, '產生圖片中…');
+      try {
+        var output = await renderItemBlob(item); downloadBlob(output.blob, fileBaseName(item.name) + '_watermarked.' + output.info.ext); setProgress(100, '完成'); showSuccess('目前圖片已開始下載。');
+      } catch (error) { showError(error.message || '下載失敗。'); }
+      finally { state.busy = false; syncButtons(); setTimeout(function () { els.progress.classList.remove('is-shown'); }, 500); }
+    }
+    async function downloadZip() {
+      if (!state.items.length || !state.watermark.text.trim() || state.busy) return;
+      if (typeof JSZip === 'undefined') { showError('ZIP 元件載入失敗，請檢查網路連線後重新整理頁面。'); return; }
+      state.busy = true; hideMessages(); syncButtons(); els.progress.classList.add('is-shown'); setProgress(0, '準備處理…');
+      var zip = new JSZip(), done = 0, failed = [];
+      try {
+        for (var i = 0; i < state.items.length; i++) {
+          try {
+            var item = state.items[i], output = await renderItemBlob(item);
+            zip.file(fileBaseName(item.name) + '_watermarked.' + output.info.ext, output.blob); done++;
+          } catch (error) { failed.push(state.items[i].name + '：' + (error.message || '處理失敗')); }
+          setProgress(Math.round(done / state.items.length * 75), '處理中… ' + (i + 1) + ' / ' + state.items.length); await nextTick();
+        }
+        if (!done) throw new Error('沒有成功產生任何圖片。');
+        setProgress(80, '打包 ZIP…');
+        var blob = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE', compressionOptions: { level: 6 } }, function (meta) { setProgress(80 + Math.round(meta.percent * 0.2), '打包 ZIP…'); });
+        downloadBlob(blob, 'watermarked.zip'); setProgress(100, '完成');
+        showSuccess('已處理 ' + done + ' 張圖片，ZIP 已開始下載。' + (failed.length ? ' 另有 ' + failed.length + ' 張失敗。' : ''));
+        if (failed.length) showError('部分圖片處理失敗：' + failed.join('；'));
+      } catch (error) { showError(error.message || '批次下載失敗。'); }
+      finally { state.busy = false; syncButtons(); setTimeout(function () { els.progress.classList.remove('is-shown'); }, 500); }
+    }
+
+    function startDrag(event) {
+      if (!activeItem() || !state.watermark.text.trim() || state.busy || (event.button !== undefined && event.button !== 0)) return;
+      event.preventDefault();
+      state.drag = { pointerId: event.pointerId, startClientX: event.clientX, startClientY: event.clientY, startX: state.watermark.anchorX, startY: state.watermark.anchorY };
+      els.hitbox.classList.add('is-dragging'); if (els.hitbox.setPointerCapture) els.hitbox.setPointerCapture(event.pointerId);
+      els.hitbox.addEventListener('pointermove', moveDrag); els.hitbox.addEventListener('pointerup', stopDrag); els.hitbox.addEventListener('pointercancel', stopDrag);
+    }
+    function moveDrag(event) {
+      if (!state.drag || event.pointerId !== state.drag.pointerId) return;
+      var rect = els.previewCanvas.getBoundingClientRect();
+      if (!rect.width || !rect.height) return;
+      state.watermark.anchorX = clamp(state.drag.startX + (event.clientX - state.drag.startClientX) / rect.width, 0, 1);
+      state.watermark.anchorY = clamp(state.drag.startY + (event.clientY - state.drag.startClientY) / rect.height, 0, 1);
+      syncControls(); renderPreview();
+    }
+    function stopDrag(event) {
+      if (!state.drag || (event && event.pointerId !== state.drag.pointerId)) return;
+      if (els.hitbox.releasePointerCapture && els.hitbox.hasPointerCapture(state.drag.pointerId)) els.hitbox.releasePointerCapture(state.drag.pointerId);
+      els.hitbox.classList.remove('is-dragging'); els.hitbox.removeEventListener('pointermove', moveDrag); els.hitbox.removeEventListener('pointerup', stopDrag); els.hitbox.removeEventListener('pointercancel', stopDrag); state.drag = null;
+    }
+    function moveByKeyboard(event) {
+      if (!activeItem() || !state.watermark.text.trim() || state.busy) return;
+      var step = event.shiftKey ? 0.05 : 0.01, changed = true;
+      if (event.key === 'ArrowLeft') state.watermark.anchorX = clamp(state.watermark.anchorX - step, 0, 1);
+      else if (event.key === 'ArrowRight') state.watermark.anchorX = clamp(state.watermark.anchorX + step, 0, 1);
+      else if (event.key === 'ArrowUp') state.watermark.anchorY = clamp(state.watermark.anchorY - step, 0, 1);
+      else if (event.key === 'ArrowDown') state.watermark.anchorY = clamp(state.watermark.anchorY + step, 0, 1);
+      else changed = false;
+      if (changed) { event.preventDefault(); syncControls(); renderPreview(); }
+    }
+
+    els.dropzone.addEventListener('click', function () { if (!state.busy) els.fileInput.click(); });
+    els.dropzone.addEventListener('dragover', function (event) { event.preventDefault(); els.dropzone.classList.add('is-dragover'); });
+    els.dropzone.addEventListener('dragleave', function () { els.dropzone.classList.remove('is-dragover'); });
+    els.dropzone.addEventListener('drop', function (event) { event.preventDefault(); els.dropzone.classList.remove('is-dragover'); if (event.dataTransfer.files.length) addFiles(Array.from(event.dataTransfer.files)); });
+    els.fileInput.addEventListener('change', function (event) { if (event.target.files.length) addFiles(Array.from(event.target.files)); });
+    els.clearBtn.addEventListener('click', clearAll);
+    els.textInput.addEventListener('input', function () { state.watermark.text = els.textInput.value; els.textCount.textContent = state.watermark.text.length; hideMessages(); renderPreview(); });
+    els.colorInput.addEventListener('input', function () { state.watermark.color = els.colorInput.value; els.colorValue.textContent = state.watermark.color.toUpperCase(); renderPreview(); });
+    els.sizeSlider.addEventListener('input', function () { state.watermark.fontScale = parseFloat(els.sizeSlider.value); updateSizeLabel(); renderPreview(); });
+    els.rotationSlider.addEventListener('input', function () { state.watermark.rotation = parseInt(els.rotationSlider.value, 10); els.rotationVal.textContent = state.watermark.rotation + '°'; renderPreview(); });
+    els.opacitySlider.addEventListener('input', function () { state.watermark.opacity = parseInt(els.opacitySlider.value, 10) / 100; els.opacityVal.textContent = els.opacitySlider.value + '%'; renderPreview(); });
+    els.xSlider.addEventListener('input', function () { state.watermark.anchorX = parseInt(els.xSlider.value, 10) / 100; els.xVal.textContent = els.xSlider.value + '%'; renderPreview(); });
+    els.ySlider.addEventListener('input', function () { state.watermark.anchorY = parseInt(els.ySlider.value, 10) / 100; els.yVal.textContent = els.ySlider.value + '%'; renderPreview(); });
+    els.repeatInput.addEventListener('change', function () { state.watermark.repeat = els.repeatInput.checked; renderPreview(); });
+    els.hitbox.addEventListener('pointerdown', startDrag); els.hitbox.addEventListener('keydown', moveByKeyboard);
+    els.downloadCurrent.addEventListener('click', downloadCurrent); els.downloadZip.addEventListener('click', downloadZip);
+    window.addEventListener('beforeunload', function () { state.items.forEach(releaseItem); });
+
+    syncControls(); syncButtons();
+  })();
+  </script>
+</body>
+</html>

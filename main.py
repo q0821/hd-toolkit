@@ -70,6 +70,12 @@ async def page_sticker_ai():
 @app.get("/invoice-stamp", include_in_schema=False)
 async def page_invoice_stamp():
     return _page("invoice-stamp", "index.html")
+# 圖片壓字工具頁面（純前端：Canvas 合成、圖片不上傳）
+@app.get("/text-watermark", include_in_schema=False)
+async def page_text_watermark():
+    return _page("text-watermark", "index.html")
+
+
 
 
 # AI（Illustrator）/ PDF 轉 SVG 工具頁面（前端 + ai2svg 後端 API）
