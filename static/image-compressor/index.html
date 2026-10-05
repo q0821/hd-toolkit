@@ -93,10 +93,10 @@
         <div class="section">
           <div class="section__label"><span class="section__num">01</span> 上傳圖片</div>
           <div class="dropzone" id="dropzone">
-            <input type="file" id="fileInput" accept="image/jpeg,image/png,image/webp,image/avif,image/heic,image/heif,.heic,.heif" multiple hidden>
+            <input type="file" id="fileInput" accept="image/jpeg,image/png,image/webp,image/avif,image/heic,image/heif,image/tiff,.heic,.heif,.tif,.tiff" multiple hidden>
             <svg class="dropzone__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M8.5 10a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3z"/><path d="M21 15l-5-5L5 21"/></svg>
             <div class="dropzone__title">拖曳圖片到這裡</div>
-            <div class="dropzone__hint">可一次多張（JPEG / PNG / WEBP / AVIF / HEIC）</div>
+            <div class="dropzone__hint">可一次多張（JPEG / PNG / WEBP / AVIF / HEIC / TIF）<br>TIF 選「原格式」時轉成 JPG，僅支援單頁影像。</div>
             <span class="dropzone__file" id="fileCount"></span>
           </div>
         </div>
@@ -184,11 +184,12 @@
   </main>
 
   <footer class="app-footer">
-    <p>選項與互動參考自 <a href="https://github.com/joye61/pic-smaller" rel="noopener">pic-smaller</a>（MIT）；壓縮由 <a href="https://github.com/jamsinclair/jsquash" rel="noopener">jSquash</a> WASM codec 提供；HEIC 解碼由 <a href="https://github.com/catdad-experiments/libheif-js" rel="noopener">libheif-js</a>（LGPL-3.0）提供。</p>
+    <p>選項與互動參考自 <a href="https://github.com/joye61/pic-smaller" rel="noopener">pic-smaller</a>（MIT）；壓縮由 <a href="https://github.com/jamsinclair/jsquash" rel="noopener">jSquash</a> WASM codec 提供；HEIC 解碼由 <a href="https://github.com/catdad-experiments/libheif-js" rel="noopener">libheif-js</a>（LGPL-3.0）提供；TIF 解碼由 <a href="https://github.com/photopea/UTIF.js" rel="noopener">UTIF.js</a>（MIT）提供。</p>
   </footer>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
   <script src="/static/shared/heic-decode.js"></script>
+  <script src="/static/shared/tiff-decode.js?v=1.0.0"></script>
   <script type="module">
     // ---- jSquash codec（unpkg ESM，瀏覽器跑 WASM；用到才載、載過就快取）----
     const CDN = (name) => `https://unpkg.com/@jsquash/${name}?module`;
@@ -207,6 +208,7 @@
     async function decodeFile(buf, srcCodec) {
       // HEIC 沒有 jSquash codec，走共用的 libheif WASM 模組
       if (srcCodec === 'heic') return HeicDecode.decodeToImageData(buf);
+      if (srcCodec === 'tiff') return TiffDecode.decodeToImageData(buf);
       const mod = await getCodec(srcCodec);
       return mod.decode(buf);
     }
@@ -280,15 +282,16 @@
     // HEIC 不做輸出（HEVC 編碼專利 + 相容性差），選「原格式」時落到 JPEG
     function targetCodecFor(item) {
       if (state.format !== 'orig') return state.format;
-      return item.srcCodec === 'heic' ? 'jpeg' : item.srcCodec;
+      return needsConversion(item) ? 'jpeg' : item.srcCodec;
     }
 
     // ---- 清單渲染（全程用 DOM 節點建構，不用 innerHTML）----
     // 標籤要跟著輸出格式走：改成 WEBP 後還寫著「→ JPG」等於標了個錯的落點
-    function convLabel(item) { return 'HEIC → ' + FMT[targetCodecFor(item)].ext.toUpperCase(); }
+    function needsConversion(item) { return item.srcCodec === 'heic' || item.srcCodec === 'tiff'; }
+    function convLabel(item) { return (item.srcCodec === 'tiff' ? 'TIF' : 'HEIC') + ' → ' + FMT[targetCodecFor(item)].ext.toUpperCase(); }
     function refreshConvChips() {
       state.items.forEach(it => {
-        if (it.srcCodec !== 'heic' || !it.nameEl) return;
+        if (!needsConversion(it) || !it.nameEl) return;
         const chip = it.nameEl.querySelector('.conv');
         if (chip) chip.textContent = convLabel(it);
       });
@@ -324,7 +327,7 @@
       const info = el('div', 'cmp-info');
       const nm = el('div', 'cmp-name', item.name); nm.title = item.name;
       // 轉換落點要看得見，不做隱形轉檔
-      if (item.srcCodec === 'heic') nm.append(el('span', 'conv', convLabel(item)));
+      if (needsConversion(item)) nm.append(el('span', 'conv', convLabel(item)));
       const sz = el('div', 'cmp-sizes');
       const dl = el('button', 'btn btn--secondary', '下載'); dl.disabled = true;
       dl.addEventListener('click', () => { if (item.blob) triggerDownload(item.blob, item.outName); });
@@ -396,14 +399,17 @@
     let addQueue = Promise.resolve();
     function addFiles(fileList) {
       const files = Array.from(fileList); // 立即快照：input.value 清空後 FileList 會失效
-      addQueue = addQueue.then(() => addFilesInner(files)).catch(() => {});
+      addQueue = addQueue.then(() => addFilesInner(files)).catch(e => {
+        console.error('讀取圖片失敗：', e);
+        showError('讀取圖片失敗，請重新選取檔案。');
+      });
       return addQueue;
     }
     async function addFilesInner(files) {
       hideMessages();
       const accepted = [], rejected = [];
       for (const f of files) {
-        const codec = SUPPORTED[f.type] || (await HeicDecode.isHeic(f) ? 'heic' : null);
+        const codec = SUPPORTED[f.type] || (await TiffDecode.isTiff(f) ? 'tiff' : (await HeicDecode.isHeic(f) ? 'heic' : null));
         if (codec) accepted.push([f, codec]);
         else rejected.push(f.name || '(未命名)');
       }
@@ -411,7 +417,7 @@
         state.items.push({
           file: f, name: f.name, origSize: f.size, srcCodec: codec,
           // HEIC 瀏覽器顯示不出來，縮圖等壓縮完再用結果補
-          thumbURL: codec === 'heic' ? null : URL.createObjectURL(f),
+          thumbURL: (codec === 'heic' || codec === 'tiff') ? null : URL.createObjectURL(f),
           blob: null, newSize: 0, outName: '', error: null,
           rowEl: null, sizesEl: null, dlBtn: null, thumbEl: null, nameEl: null,
         });
@@ -419,7 +425,7 @@
       els.fileCount.textContent = state.items.length + ' 張';
       els.fileCount.classList.toggle('is-shown', state.items.length > 0);
       renderList(); syncGoBtn();
-      if (rejected.length) showError('已略過不支援的檔案（只接受 JPEG / PNG / WEBP / AVIF / HEIC）：' + rejected.join('、'));
+      if (rejected.length) showError('已略過不支援的檔案（只接受 JPEG / PNG / WEBP / AVIF / HEIC / TIF）：' + rejected.join('、'));
     }
     function clearAll() {
       if (state.busy) return;
@@ -454,7 +460,7 @@
       state.items.forEach(it => {
         it.blob = null; it.newSize = 0; it.error = null;
         // HEIC 的縮圖是上一輪結果 blob 做的，重壓前先釋放並還原成佔位，避免累積洩漏
-        if (it.srcCodec === 'heic' && it.thumbURL) {
+        if (needsConversion(it) && it.thumbURL) {
           try { URL.revokeObjectURL(it.thumbURL); } catch (e) {}
           it.thumbURL = null;
           if (it.thumbEl) { const ph = buildThumb(it); it.thumbEl.replaceWith(ph); it.thumbEl = ph; }

@@ -107,7 +107,23 @@ curl -X POST "http://localhost:8000/api/pdf2jpg/convert" \
 
 健康檢查，回 `{"status": "ok"}`。
 
-## 部署（Docker / Zeabur）
+## 正式站部署（Mac mini／Docker）
+
+正式網址：https://toolkit.jackie-yeh.com/ 。2026-10-02 已切換至 Mac mini，由 `agent` 帳號的 OrbStack 與 Docker Compose 管理。2026-10-05 使用者再次確認此部署位置。
+
+- 部署目錄：`/Users/agent/WORK/case/hd-toolkit-container`。
+- Compose 專案：`mini-hd-toolkit`，應用服務：`toolkit`。
+- 正式流量：Cloudflare Tunnel → `http://toolkit:8080`。
+- mini 本機應用埠：`127.0.0.1:8818`。
+- 部署設定與驗收紀錄由 `mini-agent` 專案維護，見 [容器部署紀錄](../mini-agent/docs/runbooks/hd-toolkit-container.md) 與 [正式切換與登入常駐](../mini-agent/docs/runbooks/hd-toolkit-public.md)。
+
+採專用 Cloudflare Tunnel，讓 mini 只需向外連線，並與公司共用入口分開管理。Zeabur 不作為目前正式部署目標。正式容器使用建置映像檔，沒有掛載本機專案來源；本機編輯或 GitHub 推送不代表正式站已更新。更新前應讀取上述操作紀錄，依核准範圍重新建置與切換，並驗證正式網址實際提供的新版本。
+
+部署位置依 2026-10-02 的驗收紀錄及 2026-10-05 的使用者確認更新。整機冷啟動與斷電恢復的驗收狀態，請以 `mini-agent` 最新紀錄為準。
+
+2026-10-05 已部署 TIF 轉 JPG，映像檔為 `mini-hd-toolkit:tiff-20261005`。正式瀏覽器轉檔、下載與執行檔雜湊均已核對，詳見 [部署紀錄](docs/deployment-2026-10-05-tiff.md)。
+
+### 本機 Docker 執行範例
 
 `Dockerfile` 已含 poppler，容器跑在 8080：
 
@@ -115,8 +131,6 @@ curl -X POST "http://localhost:8000/api/pdf2jpg/convert" \
 docker build -t hd-toolkit .
 docker run -p 8080:8080 hd-toolkit
 ```
-
-Zeabur 直接連這個 repo 即可，會自動用根目錄的 `Dockerfile`。
 
 ## 加新工具
 
