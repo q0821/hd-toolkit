@@ -60,8 +60,9 @@
     if (page.t258 && page.t258.some(bits => ![1, 2, 4, 8].includes(bits))) {
       throw new Error('目前僅支援每色版最高 8 位元的 TIF，請先轉為 8 位元影像。');
     }
-    // 常見 RGB、灰階、黑白、索引色。其他色彩格式明確拒絕，避免產生錯色 JPG。
-    if (![0, 1, 2, 3].includes(page.t262 && page.t262[0])) {
+    // CMYK 使用 UTIF.js 的基本換算轉為 RGB，不套用內嵌 ICC 色彩描述檔。
+    // 支援 RGB、灰階、黑白、索引色與 CMYK；其他色彩格式明確拒絕。
+    if (![0, 1, 2, 3, 5].includes(page.t262 && page.t262[0])) {
       throw new Error('這張 TIF 的色彩格式尚未支援，請先轉為 RGB。');
     }
     try {
